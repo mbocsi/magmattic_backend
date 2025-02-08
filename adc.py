@@ -8,4 +8,5 @@ class ADC:
         raise NotImplementedError()
     
     async def run(self) -> None:
-        raise NotImplementedError()
+        ...
+        # raise NotImplementedError()

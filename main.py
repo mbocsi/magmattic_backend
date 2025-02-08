@@ -1,5 +1,5 @@
 import asyncio
-from frontInterface import FrontInterface, KtinkerFront
+from frontInterface import FrontInterface
 from socketFront import SocketFront
 from adc import ADC
 
@@ -14,8 +14,9 @@ class Magmattic:
 if __name__ == "__main__":
     q_data = asyncio.Queue()
     q_control = asyncio.Queue()
-    front = SocketFront(q_data, q_control)
+    front = SocketFront(q_data, q_control, host="localhost", port=8888)
     # front = KtinkerFront(q_data, q_control)
     adc = ADC(q_data, q_control)
     app = Magmattic(front, adc)
+    print("Starting app!")
     asyncio.run(app.run())
