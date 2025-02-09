@@ -1,7 +1,10 @@
 import asyncio
 from frontInterface import FrontInterface
-from websockets.server import serve
-from websockets.exceptions import ConnectionClosedOK
+from websockets.server import serve, ServerConnection
+from websockets.exceptions import ConnectionClosedOK, ConnectionClosed
+import logging
+
+logger = logging.getLogger(__name__ + ".SocketFront")
 
 class SocketFront(FrontInterface):
     def __init__(self, q_data : asyncio.Queue, q_control : asyncio.Queue, host: str = "localhost", port: int = 8888):
@@ -12,24 +15,33 @@ class SocketFront(FrontInterface):
     
     async def send_data(self, ws) -> None:
         while True:
-            try:
-                data = await self.q_control.get()
-                await ws.send(data)
-            except ConnectionClosedOK:
-                break
+            data = await self.q_control.get()
+            await ws.send(data) # Might not need to await
+            logger.debug(f"sent={data}")
     
     async def receive_control(self, ws) -> None:
-        async for control in ws:
-            print(f"Received: {control}")
+        while True:
+            control = await ws.recv()
             self.q_control.put_nowait(control)
+            logger.debug(f"received={control}")
 
     async def handle(self, ws) -> None:
-        print("Client connected!")
+        logger.info(f"client connected-> uuid={ws.id} remote_addr={ws.remote_address} local_addr={ws.local_address}")
+        # Instantiate async tasks
         send_task = asyncio.create_task(self.send_data(ws))
         receive_task = asyncio.create_task(self.receive_control(ws))
-        results = await asyncio.gather(send_task, receive_task)
+
+        try:
+            await asyncio.gather(send_task, receive_task)
+        except (ConnectionClosed, ConnectionClosedOK):
+            logger.info(f"client disconnected-> uuid={ws.id} remote_addr={ws.remote_address} local_addr={ws.local_address}")
+        except Exception as e:
+            logger.warning(f"an error occured in handle(): {e}")
+        finally:
+            send_task.cancel()
+            receive_task.cancel()
+            await asyncio.gather(send_task, receive_task, return_exceptions=True)
     
     async def run(self) -> None:
         async with serve(self.handle, self.host, self.port) as server:
-            print(f"Starting ws server on {self.host}:{self.port}")
             await server.serve_forever()
