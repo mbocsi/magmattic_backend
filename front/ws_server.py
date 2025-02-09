@@ -1,12 +1,12 @@
 import asyncio
-from frontInterface import FrontInterface
-from websockets.server import serve, ServerConnection
+from . import FrontInterface
+from websockets.server import serve
 from websockets.exceptions import ConnectionClosedOK, ConnectionClosed
 import logging
 
 logger = logging.getLogger(__name__ + ".SocketFront")
 
-class SocketFront(FrontInterface):
+class WSServer(FrontInterface):
     def __init__(self, q_data : asyncio.Queue, q_control : asyncio.Queue, host: str = "localhost", port: int = 8888):
         self.q_data : asyncio.Queue = q_data
         self.q_control : asyncio.Queue = q_control
@@ -15,7 +15,7 @@ class SocketFront(FrontInterface):
     
     async def send_data(self, ws) -> None:
         while True:
-            data = await self.q_control.get()
+            data = await self.q_data.get() # Wait for new data
             await ws.send(data) # Might not need to await
             logger.debug(f"sent={data}")
     
