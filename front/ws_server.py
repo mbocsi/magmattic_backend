@@ -7,7 +7,7 @@ import logging
 logger = logging.getLogger(__name__ + ".SocketFront")
 
 class WSServer(FrontInterface):
-    def __init__(self, q_data : asyncio.Queue, q_control : asyncio.Queue, host: str = "localhost", port: int = 8888):
+    def __init__(self, q_data : asyncio.Queue, q_control : asyncio.Queue, host : str, port: int):
         self.q_data : asyncio.Queue = q_data
         self.q_control : asyncio.Queue = q_control
         self.host = host

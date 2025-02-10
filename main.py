@@ -22,7 +22,7 @@ if __name__ == "__main__":
     q_control = asyncio.Queue()
 
     # Initialize app components
-    front = WSServer(q_data, q_control, host="localhost", port=44444)
+    front = WSServer(q_data, q_control, host="0.0.0.0", port=44444) # Accept connections from all addresses
     adc = NopADC(q_data)
     # adc = ADCController(q_data, addr=0, pin='D0')
 
