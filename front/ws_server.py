@@ -43,5 +43,6 @@ class WSServer(FrontInterface):
             await asyncio.gather(send_task, receive_task, return_exceptions=True)
     
     async def run(self) -> None:
+        logger.info("starting WS server")
         async with serve(self.handle, self.host, self.port) as server:
             await server.serve_forever()
