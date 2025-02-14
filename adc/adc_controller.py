@@ -14,6 +14,11 @@ class ADCController(ADCInterface):
 
         self.ADC = ADC
 
+        adc_id = self.ADC.getID(self.addr)
+        if not adc_id:
+            raise Exception(f"Failed to connect to ADC at addr={self.addr}")
+        logger.info(f"connected ADC-> id={adc_id}")
+
         self.q_data = q_data
 
         self.addr = addr
@@ -46,10 +51,6 @@ class ADCController(ADCInterface):
     
     async def run(self) -> None:
         logger.info("running adc controller")
-        adc_id = self.ADC.getID(self.addr)
-        if not adc_id:
-            raise Exception(f"Failed to connect to ADC at addr={self.addr}")
-        logger.info(f"connected ADC-> id={adc_id}")
         self.ADC.setMODE(self.addr,'ADV')  
         self.ADC.configINPUT(self.addr, self.pin, self.sample_rate, True)
 
@@ -62,7 +63,7 @@ class ADCController(ADCInterface):
                 logger.debug(f"ADC reading: {voltage}")
                 if not voltage:
                     logger.warning("reading from ADC stream was None")
-                    continue
+                    raise Exception("voltage is None")
                 # await self.send_voltage([voltage])
                 data.append(voltage)   
 
@@ -72,4 +73,5 @@ class ADCController(ADCInterface):
                 #     t0 = time.time()
             except Exception as e:
                 logger.warning(f"An exception has occured when reading ADC stream: {e}")
-            await asyncio.sleep(0.001)
+            finally:
+                await asyncio.sleep(0.001)
