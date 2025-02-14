@@ -22,12 +22,6 @@ class ADCController(ADCInterface):
         self.M = 1
         self.N = N # Number of samples used for the FFT
 
-        adc_id = ADC.getID(addr)
-        if not adc_id:
-            raise Exception(f"Failed to connect to ADC at addr={addr}")
-        logger.info(f"connected ADC-> id={adc_id}")
-        ADC.setMODE(self.addr,'ADV')  
-        ADC.configINPUT(self.addr, self.pin, self.sample_rate, True)
 
     
     async def send_voltage(self, buffer : list[int]) -> None:
@@ -52,8 +46,14 @@ class ADCController(ADCInterface):
     
     async def run(self) -> None:
         logger.info("running adc controller")
+        adc_id = self.ADC.getID(self.addr)
+        if not adc_id:
+            raise Exception(f"Failed to connect to ADC at addr={self.addr}")
+        logger.info(f"connected ADC-> id={adc_id}")
+        self.ADC.setMODE(self.addr,'ADV')  
+        self.ADC.configINPUT(self.addr, self.pin, self.sample_rate, True)
+
         data : deque[int] = deque([], maxlen=self.N)
-        # self.ADC.startSTREAM(self.addr, self.M) #Start ADC in streaming mode. Flag an event when M data points are collected
         t0=time.time()
         while True:
             try:
@@ -73,4 +73,3 @@ class ADCController(ADCInterface):
             except Exception as e:
                 logger.warning(f"An exception has occured when reading ADC stream: {e}")
             await asyncio.sleep(0.001)
-        ADC.stopSTREAM(self.addr)               #stop the STREAM (Never reaches)
