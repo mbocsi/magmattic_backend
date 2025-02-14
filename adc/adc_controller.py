@@ -9,7 +9,7 @@ import logging
 logger = logging.getLogger(__name__ + ".ADCController")
 
 class ADCController(ADCInterface):
-    def __init__(self, q_data : asyncio.Queue, addr: int = 0, pin : str = 'D0', sample_rate : int = 13, N : int = 1000, M : int = 100):
+    def __init__(self, q_data : asyncio.Queue, addr: int = 0, pin : str = 'D0', sample_rate : int = 13, N : int = 1000, M : int = 1):
         import piplates.ADCplate as ADC
 
         self.ADC = ADC
@@ -19,7 +19,7 @@ class ADCController(ADCInterface):
         self.addr = addr
         self.pin = pin
         self.sample_rate = sample_rate
-        self.M = M
+        self.M = 1
         self.N = N # Number of samples used for the FFT
 
         adc_id = ADC.getID(addr)
@@ -53,18 +53,17 @@ class ADCController(ADCInterface):
     async def run(self) -> None:
         logger.info("running adc controller")
         data : deque[int] = deque([], maxlen=self.N)
-        self.ADC.startSTREAM(self.addr, self.M) #Start ADC in streaming mode. Flag an event when M data points are collected
+        # self.ADC.startSTREAM(self.addr, self.M) #Start ADC in streaming mode. Flag an event when M data points are collected
         t0=time.time()
         while True:
             try:
-                readings = self.ADC.getSTREAM(self.addr)
-                logger.debug(f"ADC reading: {readings}")
-                if not readings:
+                voltage = self.ADC.readSINGLE(self.addr,self.pin)
+                logger.debug(f"ADC reading: {voltage}")
+                if not voltage:
                     logger.warning("reading from ADC stream was None")
                     continue
-                logger.debug(f"num readings: {len(readings)}")
-                await self.send_voltage(readings)
-                data.extend(readings)   
+                await self.send_voltage([voltage])
+                data.append(voltage)   
 
                 # if self.ADC.check4EVENTS(self.addr) and (self.ADC.getEVENTS(self.addr) or 0) & 0x80 and len(data) >= self.N:
                 #     T = time.time() - t0
