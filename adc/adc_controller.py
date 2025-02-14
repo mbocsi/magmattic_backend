@@ -57,13 +57,13 @@ class ADCController(ADCInterface):
         t0=time.time()
         while True:
             try:
-                # voltage = self.ADC.readSINGLE(self.addr,self.pin)
+                voltage = self.ADC.readSINGLE(self.addr,self.pin)
                 voltage = 0
                 logger.debug(f"ADC reading: {voltage}")
                 if voltage is None:
                     logger.warning("reading from ADC stream was None")
                     raise Exception("voltage is None")
-                # await self.send_voltage([voltage])
+                asyncio.create_task(self.send_voltage([voltage]))
                 data.append(voltage)   
 
                 # if self.ADC.check4EVENTS(self.addr) and (self.ADC.getEVENTS(self.addr) or 0) & 0x80 and len(data) >= self.N:
