@@ -14,11 +14,6 @@ class ADCController(ADCInterface):
 
         self.ADC = ADC
 
-        adc_id = self.ADC.getID(self.addr)
-        if not adc_id:
-            raise Exception(f"Failed to connect to ADC at addr={self.addr}")
-        logger.info(f"connected ADC-> id={adc_id}")
-
         self.q_data = q_data
 
         self.addr = addr
@@ -27,6 +22,10 @@ class ADCController(ADCInterface):
         self.M = 1
         self.N = N # Number of samples used for the FFT
 
+        adc_id = self.ADC.getID(self.addr)
+        if not adc_id:
+            raise Exception(f"Failed to connect to ADC at addr={self.addr}")
+        logger.info(f"connected ADC-> id={adc_id}")
 
     
     async def send_voltage(self, buffer : list[int]) -> None:
@@ -61,7 +60,7 @@ class ADCController(ADCInterface):
                 # voltage = self.ADC.readSINGLE(self.addr,self.pin)
                 voltage = 0
                 logger.debug(f"ADC reading: {voltage}")
-                if not voltage:
+                if voltage is None:
                     logger.warning("reading from ADC stream was None")
                     raise Exception("voltage is None")
                 # await self.send_voltage([voltage])
