@@ -61,11 +61,11 @@ class ADCController(ADCInterface):
                 logging.warning("reading from ADC stream was None")
                 continue
             logging.debug(f"num readings: {len(readings)}")
-            asyncio.create_task(self.send_voltage(readings))
+            await self.send_voltage(readings)
             data.extend(readings)   
 
             if self.ADC.check4EVENTS(self.addr) and (self.ADC.getEVENTS(self.addr) or 0) & 0x80 and len(data) >= self.N:
                 T = time.time() - t0
-                asyncio.create_task(self.send_fft(data, T))
+                await self.send_fft(data, T)
                 t0 = time.time()
         ADC.stopSTREAM(self.addr)               #stop the STREAM (Never reaches)
