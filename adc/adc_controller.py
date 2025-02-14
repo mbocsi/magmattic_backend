@@ -51,24 +51,25 @@ class ADCController(ADCInterface):
 
     
     async def run(self) -> None:
-        logging.info("running adc controller")
+        logger.info("running adc controller")
         data : deque[int] = deque([], maxlen=self.N)
         self.ADC.startSTREAM(self.addr, self.M) #Start ADC in streaming mode. Flag an event when M data points are collected
         t0=time.time()
         while True:
             try:
                 readings = self.ADC.getSTREAM(self.addr)
+                logger.debug(f"ADC reading: {readings}")
                 if not readings:
-                    logging.warning("reading from ADC stream was None")
+                    logger.warning("reading from ADC stream was None")
                     continue
-                logging.debug(f"num readings: {len(readings)}")
+                logger.debug(f"num readings: {len(readings)}")
                 await self.send_voltage(readings)
                 data.extend(readings)   
 
-                if self.ADC.check4EVENTS(self.addr) and (self.ADC.getEVENTS(self.addr) or 0) & 0x80 and len(data) >= self.N:
-                    T = time.time() - t0
-                    await self.send_fft(data, T)
-                    t0 = time.time()
+                # if self.ADC.check4EVENTS(self.addr) and (self.ADC.getEVENTS(self.addr) or 0) & 0x80 and len(data) >= self.N:
+                #     T = time.time() - t0
+                #     await self.send_fft(data, T)
+                #     t0 = time.time()
             except Exception as e:
                 logger.warning(f"An exception has occured when reading ADC stream: {e}")
         ADC.stopSTREAM(self.addr)               #stop the STREAM (Never reaches)

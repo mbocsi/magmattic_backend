@@ -23,8 +23,8 @@ if __name__ == "__main__":
 
     # Initialize app components
     front = WSServer(q_data, q_control, host="0.0.0.0", port=44444) # Accept connections from all addresses
-    adc = NopADC(q_data)
-    # adc = ADCController(q_data, addr=0, pin='D0')
+    # adc = NopADC(q_data)
+    adc = ADCController(q_data, addr=0, pin='D0')
 
     # Initialize the app and run
     app = App(front, adc) # Inject dependencies
