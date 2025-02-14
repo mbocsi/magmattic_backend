@@ -16,6 +16,12 @@ class ADCController(ADCInterface):
 
         self.q_data = q_data
 
+        self.addr = addr
+        self.pin = pin
+        self.sample_rate = sample_rate
+        self.M = M
+        self.N = N # Number of samples used for the FFT
+
         adc_id = ADC.getID(addr)
         if not adc_id:
             raise Exception(f"Failed to connect to ADC at addr={addr}")
@@ -23,11 +29,6 @@ class ADCController(ADCInterface):
         ADC.setMODE(self.addr,'ADV')  
         ADC.configINPUT(self.addr, self.pin, self.sample_rate, True)
 
-        self.addr = addr
-        self.pin = pin
-        self.sample_rate = sample_rate
-        self.M = M
-        self.N = N # Number of samples used for the FFT
     
     async def send_voltage(self, buffer : list[int]) -> None:
         for val in buffer:
