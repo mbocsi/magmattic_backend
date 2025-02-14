@@ -58,7 +58,6 @@ class ADCController(ADCInterface):
         while True:
             try:
                 voltage = self.ADC.readSINGLE(self.addr,self.pin)
-                voltage = 0
                 logger.debug(f"ADC reading: {voltage}")
                 if voltage is None:
                     logger.warning("reading from ADC stream was None")
