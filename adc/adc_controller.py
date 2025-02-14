@@ -72,4 +72,5 @@ class ADCController(ADCInterface):
                 #     t0 = time.time()
             except Exception as e:
                 logger.warning(f"An exception has occured when reading ADC stream: {e}")
+            await asyncio.sleep(0.001)
         ADC.stopSTREAM(self.addr)               #stop the STREAM (Never reaches)
