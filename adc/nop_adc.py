@@ -25,6 +25,10 @@ class NopADC(ADCInterface):
 
         self.q_data.put_nowait(json.dumps({'type': 'fft', 'val': [[f, v] for f, v in zip(freq, V1)]}))
 
+    @classmethod
+    async def sin_async(cls, angle):
+        return await asyncio.to_thread(math.sin, angle)
+
     async def run(self) -> None:
         data = deque(maxlen=self.N)
         t0=time.time()
@@ -35,7 +39,7 @@ class NopADC(ADCInterface):
 
             # Sin wave generator
             angle = (angle + (0.01 * 2 * math.pi)) % (2 * math.pi)
-            value = math.sin(angle)
+            value = await NopADC.sin_async(angle) 
             asyncio.create_task(self.send_voltage([value]))
             data.append(value)
             if counter >= self.M and len(data) >= self.N:
@@ -43,4 +47,4 @@ class NopADC(ADCInterface):
                 T = time.time() - t0
                 asyncio.create_task(self.send_fft(data, T))
                 t0 = time.time()
-            await asyncio.sleep(0.001)
+            await asyncio.sleep(0)

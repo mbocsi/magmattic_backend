@@ -32,20 +32,18 @@ class ADCController(ADCInterface):
             self.q_data.put_nowait(json.dumps({'type': 'voltage', 'val': val}))
     
     async def send_fft(self, data, T) -> None:
-        Ntot = len(data)   # Total number of readings 
+        Ntot = len(data)
             
-        FFT = np.abs(np.fft.fft(data))/Ntot   # Compute abs value of FFT in volts. Double sided
-        # Convert to single sided voltage:
-        # You must convert Ntot/2_+1 into an integer for it to work with the indices of an array, because its by default a float
-        V1 = FFT[0:int(Ntot/2+1)]    # First half is for positive frequency. See this article for more details: https://selfnoise.co.uk/resources/signals-and-dft/dft-even-odd-n/
-        # The indicies will change slightly depending on if you have an even or odd number of data points in the time domain
-        V1[1:-2]=2*V1[1:-2] # Multiply by 2 except for DC component and Nyquist frequency. -1 represents the end of the array at the Nyquist frequency
+        FFT = np.abs(np.fft.fft(data))/Ntot
+        V1 = FFT[0:int(Ntot/2+1)]
+        V1[1:-2]=2*V1[1:-2]
 
-        freq = 1/T*np.linspace(0, int(Ntot/2+1),int(Ntot/2+1))   # Frequency axis in Hz
+        freq = 1/T*np.linspace(0, int(Ntot/2+1),int(Ntot/2+1))
 
         self.q_data.put_nowait(json.dumps({'type': 'fft', 'val': [[f, v] for f, v in zip(freq, V1)]}))
 
-
+    async def readSINGLE_async(self):
+        return await asyncio.to_thread(self.ADC.readSINGLE, self.addr, self.pin)
     
     async def run(self) -> None:
         logger.info("running adc controller")
@@ -56,7 +54,7 @@ class ADCController(ADCInterface):
         t0=time.time()
         while True:
             try:
-                voltage = self.ADC.readSINGLE(self.addr, self.pin)
+                voltage = await self.readSINGLE_async() 
                 logger.debug(f"ADC reading: {voltage}")
                 if voltage is None:
                     logger.warning("reading from ADC stream was None")
@@ -71,4 +69,4 @@ class ADCController(ADCInterface):
             except Exception as e:
                 logger.warning(f"An exception has occured when reading ADC stream: {e}")
             finally:
-                await asyncio.sleep(0.001)
+                await asyncio.sleep(0)

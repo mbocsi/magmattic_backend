@@ -11,7 +11,7 @@ class App:
         self.adc = adc
     
     async def run(self) -> None:
-       await asyncio.gather(*(self.front.run(), self.adc.run()))
+       await asyncio.gather(self.front.run(), self.adc.run())
 
 if __name__ == "__main__":
     # Logging settings
