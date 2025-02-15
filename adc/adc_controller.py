@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__ + ".ADCController")
 
 class ADCController(ADCInterface):
     def __init__(self, q_data : asyncio.Queue, addr: int = 0, pin : str = 'D0', sample_rate : int = 13, N : int = 1000, M : int = 1):
-        import piplates.ADCplate as ADC
+        import adc.adc_async as ADC
 
         self.ADC = ADC
 
@@ -42,9 +42,6 @@ class ADCController(ADCInterface):
 
         self.q_data.put_nowait(json.dumps({'type': 'fft', 'val': [[f, v] for f, v in zip(freq, V1)]}))
 
-    async def readSINGLE_async(self):
-        return await asyncio.to_thread(self.ADC.readSINGLE, self.addr, self.pin)
-    
     async def run(self) -> None:
         logger.info("running adc controller")
         self.ADC.setMODE(self.addr,'ADV')  
@@ -54,7 +51,7 @@ class ADCController(ADCInterface):
         t0=time.time()
         while True:
             try:
-                voltage = await self.readSINGLE_async() 
+                voltage = await self.ADC.readSingleSync(self.addr, self.pin) 
                 logger.debug(f"ADC reading: {voltage}")
                 if voltage is None:
                     logger.warning("reading from ADC stream was None")
