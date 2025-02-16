@@ -22,16 +22,17 @@ class WSServer(FrontInterface):
     async def receive_control(self, ws) -> None:
         while True:
             control = await ws.recv()
-            self.q_control.put_nowait(control)
+            await self.q_control.put(control)
             logger.debug(f"received={control}")
 
     async def handle(self, ws) -> None:
         logger.info(f"client connected-> uuid={ws.id} remote_addr={ws.remote_address} local_addr={ws.local_address}")
-        # Instantiate async tasks
+        # Start the async coroutines
         send_task = asyncio.create_task(self.send_data(ws))
         receive_task = asyncio.create_task(self.receive_control(ws))
 
         try:
+            # Wait for the coroutines to end/raise an exception
             await asyncio.gather(send_task, receive_task)
         except (ConnectionClosed, ConnectionClosedOK):
             logger.info(f"client disconnected-> uuid={ws.id} remote_addr={ws.remote_address} local_addr={ws.local_address}")

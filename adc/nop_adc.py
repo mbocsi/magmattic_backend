@@ -40,11 +40,11 @@ class NopADC(ADCInterface):
             # Sin wave generator
             angle = (angle + (0.01 * 2 * math.pi)) % (2 * math.pi)
             value = await NopADC.sin_async(angle)
-            asyncio.create_task(self.send_voltage([value]))
+            await self.send_voltage([value])
             data.append(value)
             if counter >= self.M and len(data) >= self.N:
                 counter = 0
                 T = time.time() - t0
-                asyncio.create_task(self.send_fft(data, T))
+                await self.send_fft(data, T)
                 t0 = time.time()
-            await asyncio.sleep(0)
+            await asyncio.sleep(0.001) # Yield to event controller
