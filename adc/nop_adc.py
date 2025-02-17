@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__ + ".NopADC")
 
 
 class NopADC(ADCInterface):
-    def __init__(self, q_data: asyncio.Queue, N: int = 100, M: int = 1000):
+    def __init__(self, q_data: asyncio.Queue, N: int = 16, M: int = 1000):
         self.q_data = q_data
         self.N = N
         self.M = M
@@ -34,7 +34,7 @@ class NopADC(ADCInterface):
     async def sin_stream(cls, angle, n):
         data = []
         for _ in range(n):
-            angle = (angle + (0.01 * 2 * math.pi)) % (2 * math.pi)
+            angle = (angle + (0.003 * 2 * math.pi)) % (2 * math.pi)
             data.append(math.sin(angle) + math.sin((angle * 2)))
             await asyncio.sleep(0.001)
         return angle, data
