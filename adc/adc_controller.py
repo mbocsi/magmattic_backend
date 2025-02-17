@@ -57,8 +57,8 @@ class ADCController(ADCInterface):
         """
 
         logger.debug(f"sending voltage to queue: {buf}")
-        for val in buf:
-            await self.q_data.put(json.dumps({"type": "voltage", "val": val}))
+        # for val in buf:
+        await self.q_data.put(json.dumps({"type": "voltage", "val": buf}))
 
     async def send_fft(self, data: list[float], T: float) -> None:
         """
@@ -92,7 +92,6 @@ class ADCController(ADCInterface):
         self.ADC.configINPUT(self.addr, self.pin, self.sample_rate, True)
         self.ADC.startSTREAM(self.addr, self.N)
         data: deque[float] = deque([], maxlen=self.M)
-        t0 = time.time()
         try:
             while True:
                 buffer = await self.ADC.getStreamSync(self.addr)
@@ -101,9 +100,8 @@ class ADCController(ADCInterface):
                 data.extend(buffer)
 
                 if len(data) >= self.M:
-                    T = time.time() - t0
+                    T = 1
                     await self.send_fft(list(data), T)
-                    t0 = time.time()
                 await asyncio.sleep(0)  # Might not be necessary
         except Exception:
             self.ADC.stopSTREAM(self.addr)
