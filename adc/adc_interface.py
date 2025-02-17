@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
+
 class ADCInterface(ABC):
     @abstractmethod
-    async def run(self) -> None:
-        ...
+    async def run(self) -> None: ...
