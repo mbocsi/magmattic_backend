@@ -19,7 +19,8 @@ class App:
 if __name__ == "__main__":
     # Logging settings
     logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)-7s %(name)-35s %(message)s"
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)-7s %(name)-35s %(message)s",
     )
 
     # Initialize queues

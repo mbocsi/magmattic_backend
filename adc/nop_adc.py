@@ -5,17 +5,19 @@ import time
 import json
 import numpy as np
 import math
+import logging
+
+logger = logging.getLogger(__name__ + ".NopADC")
 
 
 class NopADC(ADCInterface):
-    def __init__(self, q_data: asyncio.Queue, N: int = 64, M: int = 1000):
+    def __init__(self, q_data: asyncio.Queue, N: int = 100, M: int = 1000):
         self.q_data = q_data
         self.N = N
         self.M = M
 
     async def send_voltage(self, buffer: list[float]) -> None:
-        for val in buffer:
-            self.q_data.put_nowait(json.dumps({"type": "voltage", "val": val}))
+        await self.q_data.put(json.dumps({"type": "voltage", "val": buffer}))
 
     async def send_fft(self, data, T) -> None:
         Ntot = len(data)
@@ -24,7 +26,7 @@ class NopADC(ADCInterface):
         V1[1:-2] = 2 * V1[1:-2]
         freq = 1 / T * np.linspace(0, int(Ntot / 2 + 1), int(Ntot / 2 + 1))
 
-        self.q_data.put_nowait(
+        await self.q_data.put(
             json.dumps({"type": "fft", "val": [[f, v] for f, v in zip(freq, V1)]})
         )
 
@@ -33,7 +35,7 @@ class NopADC(ADCInterface):
         data = []
         for _ in range(n):
             angle = (angle + (0.01 * 2 * math.pi)) % (2 * math.pi)
-            data.append(math.sin(angle))
+            data.append(math.sin(angle) + math.sin((angle * 2)))
             await asyncio.sleep(0.001)
         return angle, data
 
