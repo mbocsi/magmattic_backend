@@ -8,7 +8,7 @@ import math
 
 
 class NopADC(ADCInterface):
-    def __init__(self, q_data: asyncio.Queue, N: int = 1000, M: int = 100):
+    def __init__(self, q_data: asyncio.Queue, N: int = 64, M: int = 1000):
         self.q_data = q_data
         self.N = N
         self.M = M
@@ -29,25 +29,21 @@ class NopADC(ADCInterface):
         )
 
     @classmethod
-    async def sin_async(cls, angle):
-        return await asyncio.to_thread(math.sin, angle)
+    async def sin_stream(cls, angle, n):
+        data = []
+        for _ in range(n):
+            angle = (angle + (0.01 * 2 * math.pi)) % (2 * math.pi)
+            data.append(math.sin(angle))
+            await asyncio.sleep(0.001)
+        return angle, data
 
     async def run(self) -> None:
-        data = deque(maxlen=self.N)
-        t0 = time.time()
+        data = deque(maxlen=self.M)
         angle = 0
-        counter = 0
         while True:
-            counter += 1
-
-            # Sin wave generator
-            angle = (angle + (0.01 * 2 * math.pi)) % (2 * math.pi)
-            value = await NopADC.sin_async(angle)
-            await self.send_voltage([value])
-            data.append(value)
-            if counter >= self.M and len(data) >= self.N:
-                counter = 0
-                T = time.time() - t0
+            angle, values = await NopADC.sin_stream(angle, self.N)
+            await self.send_voltage(values)
+            data.extend(values)
+            if len(data) >= self.M:
+                T = 1
                 await self.send_fft(data, T)
-                t0 = time.time()
-            await asyncio.sleep(0.001)  # Yield to event controller

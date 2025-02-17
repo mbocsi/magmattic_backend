@@ -91,7 +91,7 @@ class ADCController(ADCInterface):
         self.ADC.setMODE(self.addr, "ADV")
         self.ADC.configINPUT(self.addr, self.pin, self.sample_rate, True)
         self.ADC.startSTREAM(self.addr, self.N)
-        data: deque[float] = deque([], maxlen=self.N)
+        data: deque[float] = deque([], maxlen=self.M)
         t0 = time.time()
         try:
             while True:
