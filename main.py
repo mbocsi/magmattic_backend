@@ -28,8 +28,18 @@ class App:
 
             # Also process control data maybe
 
+    async def controlBroker(self) -> None:
+        while True:
+            data = await self.control_queue.get()
+            logger.info(data)
+            # Put other data subscribers here
+
+            # Also process control data maybe
+
     async def run(self) -> None:
-        await asyncio.gather(self.front.run(), self.adc.run(), self.messageBroker())
+        await asyncio.gather(
+            self.front.run(), self.adc.run(), self.messageBroker(), self.controlBroker()
+        )
 
 
 if __name__ == "__main__":
