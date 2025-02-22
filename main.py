@@ -8,12 +8,28 @@ logger = logging.getLogger(__name__)
 
 
 class App:
-    def __init__(self, front: FrontInterface, adc: ADCInterface) -> None:
+    def __init__(
+        self,
+        front: FrontInterface,
+        adc: ADCInterface,
+        data_queue: asyncio.Queue,
+        control_queue: asyncio.Queue,
+    ) -> None:
         self.front = front
         self.adc = adc
+        self.data_queue = data_queue
+        self.control_queue = control_queue
+
+    async def messageBroker(self) -> None:
+        while True:
+            data = await self.data_queue.get()
+            await self.front.getDataQueue().put(data)
+            # Put other data subscribers here
+
+            # Also process control data maybe
 
     async def run(self) -> None:
-        await asyncio.gather(self.front.run(), self.adc.run())
+        await asyncio.gather(self.front.run(), self.adc.run(), self.messageBroker())
 
 
 if __name__ == "__main__":
@@ -24,17 +40,17 @@ if __name__ == "__main__":
     )
 
     # Initialize queues
-    q_data = asyncio.Queue()
-    q_control = asyncio.Queue()
+    control_queue = asyncio.Queue()
+    data_queue = asyncio.Queue()
 
     # Initialize app components
     front = WSServer(
-        q_data, q_control, host="0.0.0.0", port=44444
+        asyncio.Queue(), control_queue, host="0.0.0.0", port=44444
     )  # Accept connections from all addresses
-    adc = NopADC(q_data)
-    # adc = ADCController(q_data, addr=0, pin="D0")
+    adc = NopADC(data_queue)
+    # adc = ADCController(data_queue, addr=0, pin="D0")
 
     # Initialize the app and run
-    app = App(front, adc)  # Inject dependencies
+    app = App(front, adc, data_queue, control_queue)  # Inject dependencies
     logger.info("starting app")
     asyncio.run(app.run())

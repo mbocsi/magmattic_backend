@@ -16,7 +16,7 @@ class ADCController(ADCInterface):
         addr: int = 0,
         pin: str = "D0",
         sample_rate: int = 13,
-        N: int = 32,
+        N: int = 16,
         M: int = 1000,
     ):
         """

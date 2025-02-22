@@ -1,6 +1,6 @@
 import asyncio
 from . import FrontInterface
-from websockets.server import serve
+from websockets.server import serve, ServerConnection
 from websockets.exceptions import ConnectionClosedOK, ConnectionClosed
 import logging
 
@@ -15,10 +15,16 @@ class WSServer(FrontInterface):
         self.q_control: asyncio.Queue = q_control
         self.host = host
         self.port = port
+        self.conn_data: dict[ServerConnection, asyncio.Queue] = (
+            {}
+        )  # Store data subscribers
+
+    def getDataQueue(self) -> asyncio.Queue:
+        return self.q_data
 
     async def send_data(self, ws) -> None:
         while True:
-            data = await self.q_data.get()  # Wait for new data
+            data = await self.conn_data[ws].get()  # Wait for new data
             await ws.send(data)  # Might not need to await
             logger.debug(f"sent={data}")
 
@@ -32,6 +38,8 @@ class WSServer(FrontInterface):
         logger.info(
             f"client connected-> uuid={ws.id} remote_addr={ws.remote_address} local_addr={ws.local_address}"
         )
+        # Add new data subscriber
+        self.conn_data[ws] = asyncio.Queue()
         # Start the async coroutines
         send_task = asyncio.create_task(self.send_data(ws))
         receive_task = asyncio.create_task(self.receive_control(ws))
@@ -48,9 +56,16 @@ class WSServer(FrontInterface):
         finally:
             send_task.cancel()
             receive_task.cancel()
+            del self.conn_data[ws]
             await asyncio.gather(send_task, receive_task, return_exceptions=True)
 
     async def run(self) -> None:
         logger.info("starting WS server")
         async with serve(self.handle, self.host, self.port) as server:
-            await server.serve_forever()
+            # Send data to each client subscriber
+            while True:
+                data = await self.q_data.get()
+                for q_data in self.conn_data.values():
+                    await q_data.put(data)
+
+            # await server.serve_forever()
