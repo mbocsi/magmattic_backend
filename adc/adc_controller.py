@@ -59,7 +59,7 @@ class ADCController(ADCInterface):
 
         logger.debug(f"sending voltage to queue: {buf}")
         # for val in buf:
-        await self.q_data.put(json.dumps({"type": "voltage", "val": buf}))
+        await self.q_data.put({"type": "voltage", "val": buf})
 
     async def send_fft(self, data: list[float], T: float) -> None:
         """
@@ -80,7 +80,7 @@ class ADCController(ADCInterface):
         freq = 1 / T * np.linspace(0, int(Ntot / 2 + 1), int(Ntot / 2 + 1))
 
         await self.q_data.put(
-            json.dumps({"type": "fft", "val": [[f, v] for f, v in zip(freq, V1)]})
+            {"type": "fft", "val": [[f, v] for f, v in zip(freq, V1)]}
         )
 
     async def run(self) -> None:
