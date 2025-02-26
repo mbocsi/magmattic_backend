@@ -7,6 +7,7 @@ def getStream(addr) -> list[float]:
     events = None
     while True:
         while not ADC.check4EVENTS(addr):
+            time.sleep(0.001)
             pass
         events = ADC.getEVENTS(addr)
         if events and events & 0x80:
