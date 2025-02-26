@@ -3,6 +3,7 @@ from . import FrontInterface
 from websockets.server import serve, ServerConnection
 from websockets.exceptions import ConnectionClosedOK, ConnectionClosed
 import logging
+import json
 
 logger = logging.getLogger(__name__ + ".SocketFront")
 
@@ -19,13 +20,10 @@ class WSServer(FrontInterface):
             {}
         )  # Store data subscribers
 
-    def getDataQueue(self) -> asyncio.Queue:
-        return self.q_data
-
     async def send_data(self, ws) -> None:
         while True:
             data = await self.conn_data[ws].get()  # Wait for new data
-            await ws.send(data)  # Might not need to await
+            await ws.send(json.dumps(data))  # Might not need to await
             logger.debug(f"sent={data}")
 
     async def receive_control(self, ws) -> None:

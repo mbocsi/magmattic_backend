@@ -13,6 +13,7 @@ class ADCController(ADCInterface):
     def __init__(
         self,
         q_data: asyncio.Queue,
+        q_control: asyncio.Queue,
         addr: int = 0,
         pin: str = "D0",
         sample_rate: int = 13,
