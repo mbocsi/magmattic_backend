@@ -43,6 +43,7 @@ class ADCController(ADCInterface):
         self.N = N
         self.M = M
         self.rolling_fft = True
+        self.stream_task = None
 
         adc_id = self.ADC.getID(self.addr)
         if not adc_id:
@@ -136,6 +137,6 @@ class ADCController(ADCInterface):
             self.ADC.stopSTREAM(self.addr)
 
     async def run(self) -> None:
-        stream_task = asyncio.create_task(self.stream_adc())
+        self.stream_task = asyncio.create_task(self.stream_adc())
         control_task = asyncio.create_task(self.recv_control())
         await control_task
