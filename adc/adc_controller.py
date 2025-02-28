@@ -1,7 +1,5 @@
 from . import ADCInterface
 import asyncio
-import json
-import time
 import numpy as np
 from collections import deque
 import logging
@@ -37,12 +35,14 @@ class ADCController(ADCInterface):
         self.ADC = ADC
 
         self.q_data = q_data
+        self.q_control = q_control
 
         self.addr = addr
         self.pin = pin
         self.sample_rate = sample_rate
         self.N = N
         self.M = M
+        self.rolling_fft = True
 
         adc_id = self.ADC.getID(self.addr)
         if not adc_id:
@@ -83,12 +83,34 @@ class ADCController(ADCInterface):
             {"type": "fft", "val": [[f, v] for f, v in zip(freq, V1)]}
         )
 
-    async def run(self) -> None:
+    async def recv_control(self) -> None:
+        while True:
+            control = await self.q_control.get()
+            if not self.stream_task:
+                continue
+            original_values = {}
+            try:
+                for var, value in control["value"].items():
+                    if hasattr(self, var):
+                        original_values[var] = getattr(self, var)
+                    else:
+                        raise AttributeError
+                    setattr(self, var, value)
+                if any(
+                    var in original_values.keys() for var in ["N", "M"]
+                ):  # Need to restart adc stream
+                    self.stream_task.cancel()
+                    self.stream_task = asyncio.create_task(self.stream_adc())
+            except AttributeError:
+                for var, value in original_values.items():
+                    setattr(self, var, value)
+
+    async def stream_adc(self):
         """
         Runs the ADC sampling process
         """
 
-        logger.info("running adc controller")
+        logger.debug("stream_adc() started")
         self.ADC.setMODE(self.addr, "ADV")
         self.ADC.configINPUT(self.addr, self.pin, self.sample_rate, True)
         self.ADC.startSTREAM(self.addr, self.N)
@@ -101,8 +123,19 @@ class ADCController(ADCInterface):
                 data.extend(buffer)
 
                 if len(data) >= self.M:
-                    T = 1
+                    T = self.M / 1000
                     await self.send_fft(list(data), T)
-                await asyncio.sleep(0)  # Might not be necessary
-        except Exception:
+                    if not self.rolling_fft:
+                        data.clear()
+                await asyncio.sleep(0)  # Guarentee resource release to event runtime
+        except asyncio.CancelledError:
+            logger.debug("stream_adc() was cancelled")
+        except Exception as e:
+            logger.warning("stream_adc() threw an exception:", e)
+        finally:
             self.ADC.stopSTREAM(self.addr)
+
+    async def run(self) -> None:
+        stream_task = asyncio.create_task(self.stream_adc())
+        control_task = asyncio.create_task(self.recv_control())
+        await control_task

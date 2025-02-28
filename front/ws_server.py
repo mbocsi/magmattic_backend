@@ -24,13 +24,11 @@ class WSServer(FrontInterface):
         while True:
             data = await self.conn_data[ws].get()  # Wait for new data
             await ws.send(json.dumps(data))  # Might not need to await
-            logger.debug(f"sent={data}")
 
     async def receive_control(self, ws) -> None:
         while True:
             control = await ws.recv()
             await self.q_control.put(control)
-            logger.debug(f"received={control}")
 
     async def handle(self, ws) -> None:
         logger.info(

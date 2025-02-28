@@ -1,8 +1,6 @@
 from . import ADCInterface
 import asyncio
 from collections import deque
-import time
-import json
 import numpy as np
 import math
 import logging
@@ -22,6 +20,8 @@ class NopADC(ADCInterface):
         self.q_control = q_control
         self.N = N
         self.M = M
+        self.stream_task: asyncio.Task | None = None
+        self.rolling_fft = True
 
     async def send_voltage(self, buffer: list[float]) -> None:
         await self.q_data.put({"type": "voltage", "val": buffer})
@@ -86,13 +86,50 @@ class NopADC(ADCInterface):
             await asyncio.sleep(0.001)
         return angle, NopADC.add_noise(data, noise_level=0.5)
 
-    async def run(self) -> None:
+    async def recv_control(self) -> None:
+        while True:
+            control = await self.q_control.get()
+            if not self.stream_task:
+                continue
+            original_values = {}
+            try:
+                for var, value in control["value"].items():
+                    if hasattr(self, var):
+                        original_values[var] = getattr(self, var)
+                    else:
+                        raise AttributeError
+                    setattr(self, var, value)
+                if any(
+                    var in original_values.keys() for var in ["N", "M"]
+                ):  # Need to restart adc stream
+                    self.stream_task.cancel()
+                    self.stream_task = asyncio.create_task(self.stream_adc())
+            except AttributeError:
+                for var, value in original_values.items():
+                    setattr(self, var, value)
+
+    async def stream_adc(self) -> None:
         data = deque(maxlen=self.M)
         angle = 0
-        while True:
-            angle, values = await NopADC.sin_stream(angle, self.N)
-            await self.send_voltage(values)
-            data.extend(values)
-            if len(data) >= self.M:
-                T = 1
-                await self.send_fft(data, T)
+        try:
+            while True:
+                angle, values = await NopADC.sin_stream(angle, self.N)
+                await self.send_voltage(values)
+                data.extend(values)
+                if len(data) >= self.M:
+                    T = self.M / 1000
+                    await self.send_fft(data, T)
+                    if not self.rolling_fft:
+                        data.clear()
+        except asyncio.CancelledError:
+            logger.debug("stream_adc() cancelled")
+        except Exception as e:
+            logger.warning("stream_adc() raised an exception:", e)
+        finally:
+            ...  # Do some clean up
+
+    async def run(self) -> None:
+        logger.info("starting nopadc")
+        self.stream_task = asyncio.create_task(self.stream_adc())
+        control_task = asyncio.create_task(self.recv_control())
+        await control_task
