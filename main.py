@@ -3,8 +3,9 @@ import logging
 import json
 from collections import defaultdict
 
-from adc import ADCController, ADCInterface, NopADC
-from front import FrontInterface, WSServer
+from adc import ADCController, NopADC
+from ws import WebSocketServer
+from app_interface import AppInterface
 
 logger = logging.getLogger(__name__)
 
@@ -12,13 +13,11 @@ logger = logging.getLogger(__name__)
 class App:
     def __init__(
         self,
-        front: FrontInterface,
-        adc: ADCInterface,
+        *deps: AppInterface,
         data_queue: asyncio.Queue,
         control_queue: asyncio.Queue,
     ) -> None:
-        self.front = front
-        self.adc = adc
+        self.deps = deps
         self.data_queue = data_queue
         self.control_queue = control_queue
         self.data_subs = defaultdict(lambda: [])
@@ -47,7 +46,7 @@ class App:
 
     async def run(self) -> None:
         await asyncio.gather(
-            self.front.run(), self.adc.run(), self.dataBroker(), self.controlBroker()
+            *[dep.run() for dep in self.deps], self.dataBroker(), self.controlBroker()
         )
 
 
@@ -64,7 +63,9 @@ if __name__ == "__main__":
 
     # === Initialize WS server ===
     ws_data_queue = asyncio.Queue()
-    front = WSServer(ws_data_queue, control_queue, host="0.0.0.0", port=44444)
+    ws_server = WebSocketServer(
+        ws_data_queue, control_queue, host="0.0.0.0", port=44444
+    )
 
     # === Initialize ADC controller ===
     adc_control_queue = asyncio.Queue()
@@ -72,7 +73,9 @@ if __name__ == "__main__":
     # adc = ADCController(data_queue, adc_control_queue, addr=0, pin="D0")
 
     # === Initialize the app ===
-    app = App(front, adc, data_queue, control_queue)  # Inject dependencies
+    app = App(
+        ws_server, adc, data_queue=data_queue, control_queue=control_queue
+    )  # Inject dependencies
 
     # === Add queue subscriptions ===
     app.registerControlSub(["adc"], adc_control_queue)

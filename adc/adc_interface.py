@@ -1,6 +1,4 @@
-from abc import ABC, abstractmethod
+from app_interface import AppInterface
 
 
-class ADCInterface(ABC):
-    @abstractmethod
-    async def run(self) -> None: ...
+class ADCInterface(AppInterface): ...

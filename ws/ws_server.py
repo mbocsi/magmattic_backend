@@ -1,5 +1,5 @@
 import asyncio
-from . import FrontInterface
+from . import WebSocketInterface
 from websockets.server import serve, ServerConnection
 from websockets.exceptions import ConnectionClosedOK, ConnectionClosed
 import logging
@@ -8,7 +8,7 @@ import json
 logger = logging.getLogger(__name__ + ".SocketFront")
 
 
-class WSServer(FrontInterface):
+class WebSocketServer(WebSocketInterface):
     def __init__(
         self, q_data: asyncio.Queue, q_control: asyncio.Queue, host: str, port: int
     ):
