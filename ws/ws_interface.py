@@ -1,4 +1,4 @@
-from app_interface import AppInterface
+from app_interface import AppComponent
 
 
-class WebSocketInterface(AppInterface): ...
+class WebSocketInterface(AppComponent): ...

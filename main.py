@@ -5,7 +5,7 @@ from collections import defaultdict
 
 from adc import ADCController, NopADC
 from ws import WebSocketServer
-from app_interface import AppInterface
+from app_interface import AppComponent
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 class App:
     def __init__(
         self,
-        *deps: AppInterface,
+        *deps: AppComponent,
         data_queue: asyncio.Queue,
         control_queue: asyncio.Queue,
     ) -> None:

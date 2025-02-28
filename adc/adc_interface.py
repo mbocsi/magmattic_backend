@@ -1,4 +1,4 @@
-from app_interface import AppInterface
+from app_interface import AppComponent
 
 
-class ADCInterface(AppInterface): ...
+class ADCInterface(AppComponent): ...
