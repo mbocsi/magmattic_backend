@@ -6,6 +6,7 @@ from collections import defaultdict
 from adc import ADCController, NopADC
 from ws import WebSocketServer
 from motor import MotorController, MotorNop
+from lcd import LCDComponent, VirtualLCDComponent
 from app_interface import AppComponent
 
 logger = logging.getLogger(__name__)
@@ -77,15 +78,21 @@ if __name__ == "__main__":
     motor_control_queue = asyncio.Queue()
     motor = MotorNop(data_queue, motor_control_queue)
 
+    # === Initialize LCD Component ===
+    lcd_data_queue = asyncio.Queue()
+    # lcd = LCDComponent(lcd_data_queue)
+    lcd = VirtualLCDComponent(lcd_data_queue)
+
     # === Initialize the app ===
     app = App(
-        ws_server, adc, motor, data_queue=data_queue, control_queue=control_queue
+        ws_server, adc, motor, lcd, data_queue=data_queue, control_queue=control_queue
     )  # Inject dependencies
 
     # === Add queue subscriptions ===
     app.registerControlSub(["adc"], adc_control_queue)
     app.registerDataSub(["voltage", "fft", "motor"], ws_data_queue)
     app.registerControlSub(["motor"], motor_control_queue)
+    app.registerDataSub(["fft"], lcd_data_queue)
 
     logger.info("starting app")
     asyncio.run(app.run())
