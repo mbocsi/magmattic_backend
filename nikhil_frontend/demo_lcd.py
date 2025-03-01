@@ -1,48 +1,58 @@
-
-# author nikhil gudladana
 from RPLCD.i2c import CharLCD
 from time import sleep
 import RPi.GPIO as GPIO
 
-# Initialize the LCD with I2C
+# Initialize LCD
 lcd = CharLCD(i2c_expander='PCF8574', address=0x27, port=1, 
              cols=16, rows=2, dotsize=8)
 
-# Set up GPIO for button
-BUTTON_PIN = 17  # GPIO pin number (change as needed)
-GPIO.setmode(GPIO.BCM)  # Use BCM numbering
-GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # Set up with pull-up resistor
+# Set up button
+BUTTON_PIN = 17
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
 # Initialize counter
 counter = 0
 last_button_state = GPIO.input(BUTTON_PIN)
+last_counter = -1  # Force initial display update
+
+# Display the counter (only when it changes)
+def update_display(count):
+    lcd.clear()
+    lcd.cursor_pos = (0, 0)
+    lcd.write_string("Button counter:")
+    lcd.cursor_pos = (1, 0)
+    lcd.write_string(f"Count: {count}")
 
 try:
+    # Initial display
+    update_display(counter)
+    
     while True:
         # Check button state
         button_state = GPIO.input(BUTTON_PIN)
         
-        # Button press detected (LOW due to pull-up)
+        # Button press detected (transition from HIGH to LOW)
         if button_state == GPIO.LOW and last_button_state == GPIO.HIGH:
             counter += 1
-            # Debounce
-            sleep(0.05)
+            print(f"Button pressed! Count: {counter}")  # Debug output
+            
+            # Update display only when counter changes
+            update_display(counter)
+            
+            # Wait for button release to avoid multiple counts
+            while GPIO.input(BUTTON_PIN) == GPIO.LOW:
+                sleep(0.01)
+                
+            # Add additional debounce delay
+            sleep(0.2)
         
         last_button_state = button_state
-        
-        # Update display
-        lcd.clear()
-        lcd.cursor_pos = (0, 0)
-        lcd.write_string("Button counter:")
-        lcd.cursor_pos = (1, 0)
-        lcd.write_string(f"Count: {counter}")
-        
-        sleep(0.1)  # Small delay to prevent LCD flicker
+        sleep(0.01)  # Short delay in main loop
         
 except KeyboardInterrupt:
     print("Cleaning up!")
     lcd.clear()
 finally:
-    # Clean up
     lcd.clear()
-    GPIO.cleanup()  # Release GPIO resources
+    GPIO.cleanup()
