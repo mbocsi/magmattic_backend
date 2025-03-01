@@ -2,7 +2,7 @@ from . import BaseLCDComponent
 import asyncio
 import logging
 
-logger = logging.getLogger(__name__ + ".LCDComponent")
+logger = logging.getLogger(__name__)
 
 
 class LCDComponent(BaseLCDComponent):

@@ -4,7 +4,7 @@ import numpy as np
 from collections import deque
 import logging
 
-logger = logging.getLogger(__name__ + ".ADCController")
+logger = logging.getLogger(__name__)
 
 
 class ADCComponent(BaseADCComponent):

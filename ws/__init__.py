@@ -1,2 +1,1 @@
-from .ws_interface import WebSocketInterface
-from .ws_server import WebSocketServer
+from .ws_server import WebSocketComponent

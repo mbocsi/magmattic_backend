@@ -1,14 +1,14 @@
 import asyncio
-from . import WebSocketInterface
+from app_interface import AppComponent
 from websockets.server import serve, ServerConnection
 from websockets.exceptions import ConnectionClosedOK, ConnectionClosed
 import logging
 import json
 
-logger = logging.getLogger(__name__ + ".SocketFront")
+logger = logging.getLogger(__name__)
 
 
-class WebSocketServer(WebSocketInterface):
+class WebSocketComponent(AppComponent):
     def __init__(
         self, q_data: asyncio.Queue, q_control: asyncio.Queue, host: str, port: int
     ):

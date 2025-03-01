@@ -4,7 +4,7 @@ import json
 from collections import defaultdict
 
 from adc import ADCComponent, VirtualADCComponent
-from ws import WebSocketServer
+from ws import WebSocketComponent
 from motor import MotorController, MotorNop
 from lcd import LCDComponent, VirtualLCDComponent
 from app_interface import AppComponent
@@ -65,9 +65,7 @@ if __name__ == "__main__":
 
     # === Initialize WS server ===
     ws_data_queue = asyncio.Queue()
-    ws_server = WebSocketServer(
-        ws_data_queue, control_queue, host="0.0.0.0", port=44444
-    )
+    ws = WebSocketComponent(ws_data_queue, control_queue, host="0.0.0.0", port=44444)
 
     # === Initialize ADC controller ===
     adc_control_queue = asyncio.Queue()
@@ -85,7 +83,7 @@ if __name__ == "__main__":
 
     # === Initialize the app ===
     app = App(
-        ws_server, adc, motor, lcd, data_queue=data_queue, control_queue=control_queue
+        ws, adc, motor, lcd, data_queue=data_queue, control_queue=control_queue
     )  # Inject dependencies
 
     # === Add queue subscriptions ===

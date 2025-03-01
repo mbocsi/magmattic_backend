@@ -3,7 +3,7 @@ import asyncio
 import numpy as np
 import logging
 
-logger = logging.getLogger(__name__ + ".MotorNop")
+logger = logging.getLogger(__name__)
 
 
 class MotorNop(MotorInterface):

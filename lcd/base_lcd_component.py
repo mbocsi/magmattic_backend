@@ -3,7 +3,7 @@ from app_interface import AppComponent
 from abc import abstractmethod
 import logging
 
-logger = logging.getLogger(__name__ + ".BaseLCDComponent")
+logger = logging.getLogger(__name__)
 
 
 class BaseLCDComponent(AppComponent):
