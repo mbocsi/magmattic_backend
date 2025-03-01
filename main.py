@@ -5,7 +5,7 @@ from collections import defaultdict
 
 from adc import ADCComponent, VirtualADCComponent
 from ws import WebSocketComponent
-from motor import MotorController, MotorNop
+from motor import MotorComponent, VirtualMotorComponent
 from lcd import LCDComponent, VirtualLCDComponent
 from app_interface import AppComponent
 
@@ -69,12 +69,13 @@ if __name__ == "__main__":
 
     # === Initialize ADC controller ===
     adc_control_queue = asyncio.Queue()
-    adc = VirtualADCComponent(data_queue, adc_control_queue)
     # adc = ADCComponent(data_queue, adc_control_queue, addr=0, pin="D0")
+    adc = VirtualADCComponent(data_queue, adc_control_queue)
 
     # === Initialize Motor Controller ===
     motor_control_queue = asyncio.Queue()
-    motor = MotorNop(data_queue, motor_control_queue)
+    # motor = MotorComponent(data_queue, motor_control_queue)
+    motor = VirtualMotorComponent(data_queue, motor_control_queue)
 
     # === Initialize LCD Component ===
     lcd_data_queue = asyncio.Queue()

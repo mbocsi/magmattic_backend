@@ -1,3 +1,3 @@
-from .motor_interface import MotorInterface
-from .motor_nop import MotorNop
-from .motor_controller import MotorController
+from .base_motor_component import BaseMotorComponent
+from .virtual_motor_component import VirtualMotorComponent
+from .motor_controller import MotorComponent

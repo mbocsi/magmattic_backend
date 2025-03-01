@@ -1,4 +1,4 @@
-from . import MotorInterface
+from . import BaseMotorComponent
 
 
-class MotorController(MotorInterface): ...
+class MotorComponent(BaseMotorComponent): ...

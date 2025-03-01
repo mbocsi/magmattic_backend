@@ -1,12 +1,12 @@
-from . import MotorInterface
+from app_interface import AppComponent
 import asyncio
-import numpy as np
 import logging
+from abc import abstractmethod
 
 logger = logging.getLogger(__name__)
 
 
-class MotorNop(MotorInterface):
+class BaseMotorComponent(AppComponent):
     def __init__(self, q_data: asyncio.Queue, q_control: asyncio.Queue, init_speed=10):
         self.q_data = q_data
         self.q_control = q_control
@@ -30,18 +30,14 @@ class MotorNop(MotorInterface):
                 for var, value in original_values.items():
                     setattr(self, var, value)
 
-    async def stream_data(self) -> None:
-        while True:
-            try:
-                self.angle = (self.angle + (self.speed * 0.01)) % (np.pi * 2)
-                await self.q_data.put(
-                    {"type": "motor", "val": {"speed": self.speed, "angle": self.angle}}
-                )
-                await asyncio.sleep(0.01)
-            except Exception:
-                ...
-            finally:
-                ...
+    async def send_data(self, angle: float, speed: float) -> None:
+        await self.q_data.put(
+            {"type": "motor", "val": {"speed": speed, "angle": angle}}
+        )
 
     async def run(self) -> None:
+        logger.info("starting motor")
         asyncio.gather(self.stream_data(), self.recv_control())
+
+    @abstractmethod
+    async def stream_data(self) -> None: ...
