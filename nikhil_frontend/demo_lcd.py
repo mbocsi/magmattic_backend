@@ -1,31 +1,48 @@
+
+# author nikhil gudladana
 from RPLCD.i2c import CharLCD
 from time import sleep
+import RPi.GPIO as GPIO
 
 # Initialize the LCD with I2C
 lcd = CharLCD(i2c_expander='PCF8574', address=0x27, port=1, 
              cols=16, rows=2, dotsize=8)
 
+# Set up GPIO for button
+BUTTON_PIN = 17  # GPIO pin number (change as needed)
+GPIO.setmode(GPIO.BCM)  # Use BCM numbering
+GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # Set up with pull-up resistor
+
+# Initialize counter
+counter = 0
+last_button_state = GPIO.input(BUTTON_PIN)
+
 try:
     while True:
-        # Writing to display
-        print("Writing to display")
-        lcd.clear()
-        lcd.cursor_pos = (0, 0)  # First line, first position
-        lcd.write_string("Greetings!")
-        lcd.cursor_pos = (1, 0)  # Second line, first position
-        lcd.write_string("Demo Code")
-        sleep(2)
+        # Check button state
+        button_state = GPIO.input(BUTTON_PIN)
         
+        # Button press detected (LOW due to pull-up)
+        if button_state == GPIO.LOW and last_button_state == GPIO.HIGH:
+            counter += 1
+            # Debounce
+            sleep(0.05)
+        
+        last_button_state = button_state
+        
+        # Update display
         lcd.clear()
         lcd.cursor_pos = (0, 0)
-        lcd.write_string("I am a display!")
-        sleep(2)
+        lcd.write_string("Button counter:")
+        lcd.cursor_pos = (1, 0)
+        lcd.write_string(f"Count: {counter}")
         
-        lcd.clear()
-        sleep(2)
+        sleep(0.1)  # Small delay to prevent LCD flicker
+        
 except KeyboardInterrupt:
     print("Cleaning up!")
     lcd.clear()
 finally:
-    # Make sure to clear the display even if an error occurs
+    # Clean up
     lcd.clear()
+    GPIO.cleanup()  # Release GPIO resources
