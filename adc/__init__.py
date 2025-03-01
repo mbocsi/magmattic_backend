@@ -1,3 +1,3 @@
-from .adc_interface import ADCInterface
-from .adc_controller import ADCController
-from .nop_adc import NopADC
+from .base_adc_component import BaseADCComponent
+from .adc_component import ADCComponent
+from .virtual_adc_component import VirtualADCComponent

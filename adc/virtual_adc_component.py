@@ -1,42 +1,14 @@
-from . import ADCInterface
+from . import BaseADCComponent
 import asyncio
 from collections import deque
 import numpy as np
 import math
 import logging
 
-logger = logging.getLogger(__name__ + ".NopADC")
+logger = logging.getLogger(__name__)
 
 
-class NopADC(ADCInterface):
-    def __init__(
-        self,
-        q_data: asyncio.Queue,
-        q_control: asyncio.Queue,
-        N: int = 16,
-        M: int = 1000,
-    ):
-        self.q_data = q_data
-        self.q_control = q_control
-        self.N = N
-        self.M = M
-        self.stream_task: asyncio.Task | None = None
-        self.rolling_fft = True
-
-    async def send_voltage(self, buffer: list[float]) -> None:
-        await self.q_data.put({"type": "voltage", "val": buffer})
-
-    async def send_fft(self, data, T) -> None:
-        Ntot = len(data)
-        FFT = np.abs(np.fft.fft(data)) / Ntot
-        V1 = FFT[0 : int(Ntot / 2 + 1)]
-        V1[1:-2] = 2 * V1[1:-2]
-        freq = 1 / T * np.linspace(0, int(Ntot / 2 + 1), int(Ntot / 2 + 1))
-
-        await self.q_data.put(
-            {"type": "fft", "val": [[f, v] for f, v in zip(freq, V1)]}
-        )
-
+class VirtualADCComponent(BaseADCComponent):
     @classmethod
     def add_noise(cls, signal, noise_type="gaussian", noise_level=0.1):
         """Adds noise to a signal.
@@ -84,41 +56,19 @@ class NopADC(ADCInterface):
             signal = math.sin(angle) + math.sin((angle * 5)) + 0.5
             data.append(signal)
             await asyncio.sleep(0.001)
-        return angle, NopADC.add_noise(data, noise_level=0.5)
-
-    async def recv_control(self) -> None:
-        while True:
-            control = await self.q_control.get()
-            if not self.stream_task:
-                continue
-            original_values = {}
-            try:
-                for var, value in control["value"].items():
-                    if hasattr(self, var):
-                        original_values[var] = getattr(self, var)
-                    else:
-                        raise AttributeError
-                    setattr(self, var, value)
-                if any(
-                    var in original_values.keys() for var in ["N", "M"]
-                ):  # Need to restart adc stream
-                    self.stream_task.cancel()
-                    self.stream_task = asyncio.create_task(self.stream_adc())
-            except AttributeError:
-                for var, value in original_values.items():
-                    setattr(self, var, value)
+        return angle, VirtualADCComponent.add_noise(data, noise_level=0.5)
 
     async def stream_adc(self) -> None:
-        data = deque(maxlen=self.M)
+        data: deque[float] = deque(maxlen=self.M)
         angle = 0
         try:
             while True:
-                angle, values = await NopADC.sin_stream(angle, self.N)
+                angle, values = await VirtualADCComponent.sin_stream(angle, self.N)
                 await self.send_voltage(values)
                 data.extend(values)
                 if len(data) >= self.M:
                     T = self.M / 1000
-                    await self.send_fft(data, T)
+                    await self.send_fft(list(data), T)
                     if not self.rolling_fft:
                         data.clear()
         except asyncio.CancelledError:
@@ -127,9 +77,3 @@ class NopADC(ADCInterface):
             logger.warning("stream_adc() raised an exception:", e)
         finally:
             ...  # Do some clean up
-
-    async def run(self) -> None:
-        logger.info("starting nopadc")
-        self.stream_task = asyncio.create_task(self.stream_adc())
-        control_task = asyncio.create_task(self.recv_control())
-        await control_task

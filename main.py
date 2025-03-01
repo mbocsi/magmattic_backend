@@ -3,7 +3,7 @@ import logging
 import json
 from collections import defaultdict
 
-from adc import ADCController, NopADC
+from adc import ADCComponent, VirtualADCComponent
 from ws import WebSocketServer
 from motor import MotorController, MotorNop
 from lcd import LCDComponent, VirtualLCDComponent
@@ -71,8 +71,8 @@ if __name__ == "__main__":
 
     # === Initialize ADC controller ===
     adc_control_queue = asyncio.Queue()
-    adc = NopADC(data_queue, adc_control_queue)
-    # adc = ADCController(data_queue, adc_control_queue, addr=0, pin="D0")
+    adc = VirtualADCComponent(data_queue, adc_control_queue)
+    # adc = ADCComponent(data_queue, adc_control_queue, addr=0, pin="D0")
 
     # === Initialize Motor Controller ===
     motor_control_queue = asyncio.Queue()

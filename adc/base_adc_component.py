@@ -1,13 +1,13 @@
-from . import ADCInterface
 import asyncio
-import numpy as np
-from collections import deque
 import logging
+import numpy as np
+from abc import abstractmethod
+from app_interface import AppComponent
 
-logger = logging.getLogger(__name__ + ".ADCController")
+logger = logging.getLogger(__name__)
 
 
-class ADCController(ADCInterface):
+class BaseADCComponent(AppComponent):
     def __init__(
         self,
         q_data: asyncio.Queue,
@@ -23,32 +23,23 @@ class ADCController(ADCInterface):
 
         Args:
             q_data (asyncio.Queue): The asyncio queue to store the collected ADC data.
+            q_control (asyncio.Queue): The asyncio queue to store the control signals.
             addr (int, optional): The address of the ADC device. Defaults to 0.
             pin (str, optional): The pin (channel) on the ADC to read from. Defaults to 'D0'.
             sample_rate (int, optional): The sample rate value for ADC readings (Pi-Plate specific). Defaults to 13.
-            N (int, optional): The number of samples per buffer for ADC streaming. Defaults to 32.
+            N (int, optional): The number of samples per buffer for ADC streaming. Defaults to 16.
             M (int, optional): The number of samples needed in the data buffer for calcuating FFT. Defaults to 1000.
         """
-
-        import adc.adc_async as ADC
-
-        self.ADC = ADC
-
         self.q_data = q_data
         self.q_control = q_control
-
-        self.addr = addr
-        self.pin = pin
-        self.sample_rate = sample_rate
         self.N = N
         self.M = M
-        self.rolling_fft = True
-        self.stream_task = None
+        self.sample_rate = sample_rate
+        self.addr = addr
+        self.pin = pin
 
-        adc_id = self.ADC.getID(self.addr)
-        if not adc_id:
-            raise Exception(f"Failed to connect to ADC at addr={self.addr}")
-        logger.info(f"connected ADC-> id={adc_id}")
+        self.stream_task: asyncio.Task | None = None
+        self.rolling_fft = True
 
     async def send_voltage(self, buf: list[float]) -> None:
         """
@@ -106,37 +97,11 @@ class ADCController(ADCInterface):
                 for var, value in original_values.items():
                     setattr(self, var, value)
 
-    async def stream_adc(self):
-        """
-        Runs the ADC sampling process
-        """
-
-        logger.debug("stream_adc() started")
-        self.ADC.setMODE(self.addr, "ADV")
-        self.ADC.configINPUT(self.addr, self.pin, self.sample_rate, True)
-        self.ADC.startSTREAM(self.addr, self.N)
-        data: deque[float] = deque([], maxlen=self.M)
-        try:
-            while True:
-                buffer = await self.ADC.getStreamSync(self.addr)
-                logger.debug(f"ADC buffer readings: {buffer}")
-                await self.send_voltage(buffer)
-                data.extend(buffer)
-
-                if len(data) >= self.M:
-                    T = self.M / 1000
-                    await self.send_fft(list(data), T)
-                    if not self.rolling_fft:
-                        data.clear()
-                await asyncio.sleep(0)  # Guarentee resource release to event runtime
-        except asyncio.CancelledError:
-            logger.debug("stream_adc() was cancelled")
-        except Exception as e:
-            logger.warning("stream_adc() threw an exception:", e)
-        finally:
-            self.ADC.stopSTREAM(self.addr)
-
     async def run(self) -> None:
+        logger.info("starting adc")
         self.stream_task = asyncio.create_task(self.stream_adc())
         control_task = asyncio.create_task(self.recv_control())
         await control_task
+
+    @abstractmethod
+    async def stream_adc(self) -> None: ...
