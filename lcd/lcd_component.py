@@ -18,6 +18,6 @@ class LCDComponent(BaseLCDComponent):
     async def update_lcd(self, freq, magnitude) -> None:
         # self.lcd.clear()
         self.lcd.cursor_pos = (0, 0)  # First line, first position
-        self.lcd.write_string(f"Freq: {freq:.2f}Hz")
+        self.lcd.write_string(f"Freq: {freq:.2f}Hz   ")
         self.lcd.cursor_pos = (1, 0)  # Second line, first position
         self.lcd.write_string(f"Mag: {magnitude:.6f}V")
