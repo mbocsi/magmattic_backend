@@ -65,11 +65,11 @@ class BaseADCComponent(AppComponent):
         logger.debug(f"sending fft to queue: {data} {T}")
         Ntot = len(data)
 
-        FFT = np.abs(np.fft.fft(data)) / Ntot
-        V1 = FFT[0 : int(Ntot / 2 + 1)]
-        V1[1:-2] = 2 * V1[1:-2]
+        FFT = np.abs(np.fft.rfft(data)) / Ntot
+        V1 = FFT
+        V1[1:-1] = 2 * V1[1:-1]
 
-        freq = 1 / T * np.linspace(0, int(Ntot / 2 + 1), int(Ntot / 2 + 1))
+        freq = np.linspace(0, Ntot / (2 * T), Ntot // 2 + 1)
 
         await self.q_data.put(
             {"type": "fft", "val": [[f, v] for f, v in zip(freq, V1)]}
