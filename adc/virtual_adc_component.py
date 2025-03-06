@@ -7,6 +7,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+frequencies = np.array([[5, 1], [10, 0.5], [20.5, 3]])
+
 
 class VirtualADCComponent(BaseADCComponent):
     @classmethod
@@ -49,21 +51,24 @@ class VirtualADCComponent(BaseADCComponent):
         return noisy_signal.tolist()
 
     @classmethod
-    async def sin_stream(cls, angle, n):
+    async def sin_stream(cls, angles, n):
         data = []
         for _ in range(n):
-            angle = (angle + (0.003 * 2 * math.pi)) % (2 * math.pi)
-            signal = math.sin(angle) + math.sin((angle * 5)) + 0.5
+            angles = (angles + (2 * np.pi * frequencies[:, [0]].T * 0.001)) % (
+                2 * np.pi
+            )
+
+            signal = np.sum(frequencies[:, [1]].T * np.sin(angles)) + 0.5
             data.append(signal)
             await asyncio.sleep(0.001)
-        return angle, VirtualADCComponent.add_noise(data, noise_level=0.5)
+        return angles, VirtualADCComponent.add_noise(data, noise_level=0.2)
 
     async def stream_adc(self) -> None:
         data: deque[float] = deque(maxlen=self.M)
-        angle = 0
+        angles = np.zeros((1, frequencies.shape[0]))
         try:
             while True:
-                angle, values = await VirtualADCComponent.sin_stream(angle, self.N)
+                angles, values = await VirtualADCComponent.sin_stream(angles, self.N)
                 await self.send_voltage(values)
                 data.extend(values)
                 if len(data) >= self.M:

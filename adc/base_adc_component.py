@@ -3,6 +3,7 @@ import logging
 import numpy as np
 from abc import abstractmethod
 from app_interface import AppComponent
+from .windows import windows
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ class BaseADCComponent(AppComponent):
 
         self.stream_task: asyncio.Task | None = None
         self.rolling_fft = True
+        self.window = "rectangular"
 
     async def send_voltage(self, buf: list[float]) -> None:
         """
@@ -65,14 +67,23 @@ class BaseADCComponent(AppComponent):
         logger.debug(f"sending fft to queue: {data} {T}")
         Ntot = len(data)
 
-        FFT = np.abs(np.fft.rfft(data)) / Ntot
+        # Window data
+        window = windows[self.window]
+        windowed_data = np.array(data) * window.func(Ntot) / window.coherent_gain
+
+        # Perform fft
+        FFT = np.abs(np.fft.rfft(windowed_data)) / Ntot
         V1 = FFT
         V1[1:-1] = 2 * V1[1:-1]
 
         freq = np.linspace(0, Ntot / (2 * T), Ntot // 2 + 1)
 
         await self.q_data.put(
-            {"type": "fft", "val": [[f, v] for f, v in zip(freq, V1)]}
+            {
+                "type": "fft",
+                "val": [[f, v] for f, v in zip(freq, V1)],
+                "metadata": {"window": self.window},
+            }
         )
 
     async def recv_control(self) -> None:
