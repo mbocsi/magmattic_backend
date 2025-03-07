@@ -5,7 +5,7 @@ import logging
 import sys
 import os
 
-sys.path.append('/~/Documents/magmattic_backend/nikhil_frontend')
+sys.path.append('/home/Documents/magmattic_backend/nikhil_frontend')
 
 from lcdcontroller import LCDController
 
