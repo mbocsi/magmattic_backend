@@ -69,7 +69,7 @@ if __name__ == "__main__":
 
     # === Initialize ADC controller ===
     adc_control_queue = asyncio.Queue()
-    # adc = ADCComponent(data_queue, adc_control_queue, addr=0, pin="D0")
+    # adc = ADCComponent(data_queue, adc_control_queue)
     adc = VirtualADCComponent(data_queue, adc_control_queue)
 
     # === Initialize Motor Controller ===

@@ -15,10 +15,20 @@ class ADCComponent(BaseADCComponent):
         addr: int = 0,
         pin: str = "D0",
         sample_rate: int = 13,
-        N: int = 16,
-        M: int = 1000,
+        Nbuf: int = 16,
+        Nsig: int = 1024,
+        Ntot: int = 1024,
     ):
-        super().__init__(q_data, q_control, addr, pin, sample_rate, N, M)
+        super().__init__(
+            q_data,
+            q_control,
+            addr=addr,
+            pin=pin,
+            sample_rate=sample_rate,
+            Nbuf=Nbuf,
+            Nsig=Nsig,
+            Ntot=Ntot,
+        )
 
         import adc.adc_async as ADC
 
