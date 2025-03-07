@@ -4,10 +4,24 @@ import math
 import logging
 import sys
 import os
+# Add multiple potential paths
+sys.path.extend([
+    os.path.dirname(os.path.abspath(__file__)),
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    '/home/magmattic/Documents/magmattic_backend/nikhil_frontend'
+])
 
-sys.path.append('/home/Documents/magmattic_backend/nikhil_frontend')
+# Try multiple import methods
+try:
+    from lcdcontroller import LCDController
+except ImportError:
+    try:
+        from nikhil_frontend.lcdcontroller import LCDController
+    except ImportError:
+        print("Import failed. Checking paths...")
+        print(sys.path)
+        raise
 
-from nikhil_frontend.lcdcontroller import LCDController
 
 logging.basicConfig(
     level=logging.INFO,
