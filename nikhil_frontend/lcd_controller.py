@@ -59,7 +59,7 @@ class LCDController(LCDInterface):
             # Test display output
             await asyncio.to_thread(self.lcd.clear)
             await asyncio.to_thread(self.lcd.write_string, "LCD Test")
-            await asyncio.to_thread(self.lcd.cursor_pos, (1, 0))
+            await asyncio.to_thread(lambda: setattr(self.lcd, 'cursor_pos', (1, 0)))
             await asyncio.to_thread(self.lcd.write_string, "Working!")
             
         except Exception as e:
@@ -213,9 +213,9 @@ class LCDController(LCDInterface):
             
             # Update display content
             await asyncio.to_thread(self.lcd.clear)
-            await asyncio.to_thread(self.lcd.cursor_pos, (0, 0))
+            await asyncio.to_thread(lambda: setattr(self.lcd, 'cursor_pos', (0, 0)))
             await asyncio.to_thread(self.lcd.write_string, line1[:cfg.LCD_WIDTH])
-            await asyncio.to_thread(self.lcd.cursor_pos, (1, 0))
+            await asyncio.to_thread(lambda: setattr(self.lcd, 'cursor_pos', (1, 0)))
             await asyncio.to_thread(self.lcd.write_string, line2[:cfg.LCD_WIDTH])
         except Exception as e:
             logger.error(f"Display update failed: {e}")
