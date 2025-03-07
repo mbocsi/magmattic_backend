@@ -16,7 +16,7 @@ try:
     from lcd_controller import LCDController
 except ImportError:
     try:
-        from nikhil_frontend.lcdcontroller import LCDController
+        from nikhil_frontend.lcd_controller import LCDController
     except ImportError:
         print("Import failed. Checking paths...")
         print(sys.path)
