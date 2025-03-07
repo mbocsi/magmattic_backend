@@ -151,10 +151,11 @@ class LCDController(LCDInterface):
         logger.info(f"LCD power toggled: {'ON' if self.lcd_power else 'OFF'}")
         
         if self.lcd_power:
+            await asyncio.to_thread(self.lcd.backlight)
             await self.update_display_with_data()
         else:
             await asyncio.to_thread(self.lcd.clear)
-            await asyncio.to_thread(self.lcd.display_off)
+            await asyncio.to_thread(self.lcd.nobacklight)
 
     async def display_menu(self) -> None:
         """Display the current menu item"""
@@ -208,8 +209,7 @@ class LCDController(LCDInterface):
             return
             
         try:
-            # Ensure the display is on
-            await asyncio.to_thread(self.lcd.display_on)
+            
             
             # Update display content
             await asyncio.to_thread(self.lcd.clear)
