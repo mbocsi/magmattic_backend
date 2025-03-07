@@ -2,11 +2,7 @@ import asyncio
 import logging
 import sys
 import os
-
-# Add parent directory to path so we can import from nikhil_frontend
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-# Direct imports from current directory
 from lcd_controller import LCDController
 
 # Configure logging
