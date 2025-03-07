@@ -4,9 +4,10 @@ import math
 import logging
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from nikhil_frontend.lcdcontroller import LCDController
 
+sys.path.append('/home/magmattic/Documents/magmattic_backend')
+
+from nikhil_frontend.lcdcontroller import LCDController
 
 logging.basicConfig(
     level=logging.INFO,
