@@ -2,7 +2,10 @@ import asyncio
 import json
 import math
 import logging
-from nikhil_frontend import LCDController
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from lcd_controller import LCDController
 
 logging.basicConfig(
     level=logging.INFO,
