@@ -11,6 +11,7 @@ BUTTON_UP = 17    # GPIO pin for UP button
 BUTTON_DOWN = 27  # GPIO pin for DOWN button
 BUTTON_SELECT = 22  # GPIO pin for SELECT button
 BUTTON_BACK = 23   # GPIO pin for BACK button
+POWER_SWITCH = 24  # GPIO pin for power switch
 
 # Display Update Settings
 UPDATE_INTERVAL = 0.1  # How often to update display (seconds)
@@ -24,9 +25,6 @@ MENU_ITEMS = [
     'Settings',
     'Info'
 ]
-
-# Thread Settings
-IO_TIMEOUT = 0.5      # Timeout for I/O operations
 
 # Display Modes
 DISPLAY_MODES = {
