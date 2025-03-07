@@ -1,16 +1,11 @@
 from abc import ABC, abstractmethod
-import asyncio
+from app_interface import AppComponent
 
-class LCDInterface(ABC):
+class LCDInterface(AppComponent):
     """
     Abstract base class for LCD display interfaces.
-    Follows similar pattern to Marton's FrontInterface while adding LCD-specific needs.
+    Extends AppComponent to match Marton's architecture.
     """
-    
-    @abstractmethod
-    async def run(self) -> None:
-        """Main run loop for the LCD interface"""
-        pass
     
     @abstractmethod
     async def initialize_display(self) -> None:
