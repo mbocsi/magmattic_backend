@@ -73,13 +73,11 @@ class BaseADCComponent(AppComponent):
         windowed_data = np.array(data) * window.func(self.Nsig) / window.coherent_gain
 
         # Perform fft
-        FFT = np.abs(np.fft.rfft(windowed_data, n=self.Ntot)) / min(
-            self.Nsig, self.Ntot
-        )
+        FFT = np.abs(np.fft.rfft(windowed_data, n=self.Ntot)) / self.Nsig
         V1 = FFT
         V1[1:-1] = 2 * V1[1:-1]
 
-        freq = np.fft.rfftfreq(self.Ntot, d=T / min(self.Nsig, self.Ntot))
+        freq = np.fft.rfftfreq(self.Ntot, d=T / self.Nsig)
 
         await self.q_data.put(
             {
