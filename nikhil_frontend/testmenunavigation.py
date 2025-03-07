@@ -1,88 +1,42 @@
 import asyncio
-import json
-import math
 import logging
 import sys
 import os
-# Add multiple potential paths
-sys.path.extend([
-    os.path.dirname(os.path.abspath(__file__)),
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    '/home/magmattic/Documents/magmattic_backend/nikhil_frontend'
-])
 
-# Try multiple import methods
-try:
-    from lcd_controller import LCDController
-except ImportError:
-    try:
-        from nikhil_frontend.lcd_controller import LCDController
-    except ImportError:
-        print("Import failed. Checking paths...")
-        print(sys.path)
-        raise
+# Add parent directory to path so we can import from nikhil_frontend
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Direct imports from current directory
+from lcd_controller import LCDController
 
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)-7s %(name)-35s %(message)s",
 )
 
-async def generate_test_data(q_data: asyncio.Queue):
-    """Generate simulated voltage and FFT data"""
-    angle = 0
-    try:
-        while True:
-            # Generate voltage data (sine wave)
-            angle = (angle + 0.1) % (2 * math.pi)
-            voltage = math.sin(angle)
-            await q_data.put({"type": "voltage", "val": [voltage]})
-
-            # Generate FFT data (simulated frequency peaks)
-            fft_data = [
-                [10.0, 0.05],
-                [20.0, 0.02],
-                [50.0, 0.8],  # Main peak
-                [100.0, 0.1],
-                [150.0, 0.03]
-            ]
-            await q_data.put({"type": "fft", "val": fft_data})
-
-            # Wait before sending next update
-            await asyncio.sleep(0.2)
-    except asyncio.CancelledError:
-        pass
+logger = logging.getLogger(__name__)
 
 async def main():
-    # Initialize queues
+    # Initialize empty queues for testing
     q_data = asyncio.Queue()
     q_control = asyncio.Queue()
-
-    # Create and start LCD controller
+    
+    # Create LCD controller
     lcd = LCDController(q_data, q_control)
-    lcd_task = asyncio.create_task(lcd.run())
     
-    # Start data generation
-    data_task = asyncio.create_task(generate_test_data(q_data))
-    
-    print("LCD Menu Test Running")
-    print("---------------------")
-    print("- Press UP/DOWN to navigate menu")
-    print("- Press SELECT to enter menu/select option")
-    print("- Press BACK to return to main display")
-    print("- Press Ctrl+C to exit")
-
+    # Run the controller
     try:
-        # Run until interrupted
-        while True:
-            await asyncio.sleep(1)
+        logger.info("Starting LCD controller test")
+        await lcd.run()
     except KeyboardInterrupt:
-        print("\nTest stopped by user")
+        logger.info("Test interrupted by user")
+    except Exception as e:
+        logger.error(f"Error during test: {e}")
     finally:
-        # Cleanup
-        data_task.cancel()
-        lcd_task.cancel()
-        await asyncio.gather(data_task, lcd_task, return_exceptions=True)
+        # Ensure cleanup is called
+        await lcd.cleanup()
+        logger.info("Test complete")
 
 if __name__ == "__main__":
     try:
