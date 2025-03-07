@@ -7,7 +7,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-frequencies = np.array([[5, 1], [10, 0.5], [20.5, 3]])
+frequencies = np.array([[5, 1], [10, 3], [20, 5]])
 
 
 class VirtualADCComponent(BaseADCComponent):
@@ -64,15 +64,15 @@ class VirtualADCComponent(BaseADCComponent):
         return angles, VirtualADCComponent.add_noise(data, noise_level=0.2)
 
     async def stream_adc(self) -> None:
-        data: deque[float] = deque(maxlen=self.M)
+        data: deque[float] = deque(maxlen=self.Nsig)
         angles = np.zeros((1, frequencies.shape[0]))
         try:
             while True:
-                angles, values = await VirtualADCComponent.sin_stream(angles, self.N)
+                angles, values = await VirtualADCComponent.sin_stream(angles, self.Nbuf)
                 await self.send_voltage(values)
                 data.extend(values)
-                if len(data) >= self.M:
-                    T = self.M / 1000
+                if len(data) >= self.Nsig:
+                    T = self.Nsig / 1007  # Sample rate is 1007
                     await self.send_fft(list(data), T)
                     if not self.rolling_fft:
                         data.clear()

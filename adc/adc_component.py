@@ -38,8 +38,8 @@ class ADCComponent(BaseADCComponent):
         logger.debug("stream_adc() started")
         self.ADC.setMODE(self.addr, "ADV")
         self.ADC.configINPUT(self.addr, self.pin, self.sample_rate, True)
-        self.ADC.startSTREAM(self.addr, self.N)
-        data: deque[float] = deque([], maxlen=self.M)
+        self.ADC.startSTREAM(self.addr, self.Nbuf)
+        data: deque[float] = deque([], maxlen=self.Nsig)
         try:
             while True:
                 buffer = await self.ADC.getStreamSync(self.addr)
@@ -47,8 +47,8 @@ class ADCComponent(BaseADCComponent):
                 await self.send_voltage(buffer)
                 data.extend(buffer)
 
-                if len(data) >= self.M:
-                    T = self.M / 1000
+                if len(data) >= self.Nsig:
+                    T = self.Nsig / 1007  # Sample rate is 1007 hz
                     await self.send_fft(list(data), T)
                     if not self.rolling_fft:
                         data.clear()

@@ -16,8 +16,9 @@ class BaseADCComponent(AppComponent):
         addr: int = 0,
         pin: str = "D0",
         sample_rate: int = 13,
-        N: int = 16,
-        M: int = 1000,
+        Nbuf: int = 16,
+        Nsig: int = 1024,
+        Ntot: int = 1024,
     ):
         """
         Initializes the ADC controller
@@ -29,12 +30,12 @@ class BaseADCComponent(AppComponent):
             pin (str, optional): The pin (channel) on the ADC to read from. Defaults to 'D0'.
             sample_rate (int, optional): The sample rate value for ADC readings (Pi-Plate specific). Defaults to 13.
             N (int, optional): The number of samples per buffer for ADC streaming. Defaults to 16.
-            M (int, optional): The number of samples needed in the data buffer for calcuating FFT. Defaults to 1000.
+            M (int, optional): The number of samples needed in the data buffer for calcuating FFT. Defaults to 1024.
         """
         self.q_data = q_data
         self.q_control = q_control
-        self.N = N
-        self.M = M
+        self.Nbuf = Nbuf
+        self.Nsig = Nsig
         self.sample_rate = sample_rate
         self.addr = addr
         self.pin = pin
@@ -42,6 +43,7 @@ class BaseADCComponent(AppComponent):
         self.stream_task: asyncio.Task | None = None
         self.rolling_fft = True
         self.window = "rectangular"
+        self.Ntot = Ntot  # Signal size + zero padding
 
     async def send_voltage(self, buf: list[float]) -> None:
         """
@@ -65,18 +67,19 @@ class BaseADCComponent(AppComponent):
         """
 
         logger.debug(f"sending fft to queue: {data} {T}")
-        Ntot = len(data)
 
         # Window data
         window = windows[self.window]
-        windowed_data = np.array(data) * window.func(Ntot) / window.coherent_gain
+        windowed_data = np.array(data) * window.func(self.Nsig) / window.coherent_gain
 
         # Perform fft
-        FFT = np.abs(np.fft.rfft(windowed_data)) / Ntot
+        FFT = np.abs(np.fft.rfft(windowed_data, n=self.Ntot)) / min(
+            self.Nsig, self.Ntot
+        )
         V1 = FFT
         V1[1:-1] = 2 * V1[1:-1]
 
-        freq = np.linspace(0, Ntot / (2 * T), Ntot // 2 + 1)
+        freq = np.fft.rfftfreq(self.Ntot, d=T / min(self.Nsig, self.Ntot))
 
         await self.q_data.put(
             {
@@ -100,7 +103,7 @@ class BaseADCComponent(AppComponent):
                         raise AttributeError
                     setattr(self, var, value)
                 if any(
-                    var in original_values.keys() for var in ["N", "M"]
+                    var in original_values.keys() for var in ["Nbuf", "Nsig"]
                 ):  # Need to restart adc stream
                     self.stream_task.cancel()
                     self.stream_task = asyncio.create_task(self.stream_adc())
