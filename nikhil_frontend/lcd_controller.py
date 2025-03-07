@@ -42,53 +42,75 @@ class LCDController(LCDInterface):
         self.counter = 0
 
     async def initialize_display(self) -> None:
-    """Initialize LCD and GPIO"""
-    # Setup LCD first
-    try:
-        self.lcd = await asyncio.to_thread(
-            CharLCD,
-            i2c_expander="PCF8574",
-            address=cfg.I2C_ADDR,
-            port=cfg.I2C_BUS,
-            cols=cfg.LCD_WIDTH,
-            rows=cfg.LCD_HEIGHT,
-            dotsize=8,
-        )
-        logger.info("LCD initialized successfully")
-        
-        # Test display output
-        await asyncio.to_thread(self.lcd.clear)
-        await asyncio.to_thread(self.lcd.write_string, "LCD Test")
-        await asyncio.to_thread(self.lcd.cursor_pos, (1, 0))
-        await asyncio.to_thread(self.lcd.write_string, "Working!")
-        
-    except Exception as e:
-        logger.error(f"LCD initialization failed: {e}")
-        raise
+        """Initialize LCD and GPIO"""
+        # Setup LCD first
+        try:
+            self.lcd = await asyncio.to_thread(
+                CharLCD,
+                i2c_expander="PCF8574",
+                address=cfg.I2C_ADDR,
+                port=cfg.I2C_BUS,
+                cols=cfg.LCD_WIDTH,
+                rows=cfg.LCD_HEIGHT,
+                dotsize=8,
+            )
+            logger.info("LCD initialized successfully")
+            
+            # Test display output
+            await asyncio.to_thread(self.lcd.clear)
+            await asyncio.to_thread(self.lcd.write_string, "LCD Test")
+            await asyncio.to_thread(self.lcd.cursor_pos, (1, 0))
+            await asyncio.to_thread(self.lcd.write_string, "Working!")
+            
+        except Exception as e:
+            logger.error(f"LCD initialization failed: {e}")
+            raise
 
-    # Try to setup GPIO, but continue even if it fails
-    try:
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setup(cfg.BUTTON_UP, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-        GPIO.setup(cfg.BUTTON_DOWN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-        GPIO.setup(cfg.BUTTON_SELECT, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-        GPIO.setup(cfg.BUTTON_BACK, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        # Try to setup GPIO, but continue even if it fails
+        try:
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setup(cfg.BUTTON_UP, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+            GPIO.setup(cfg.BUTTON_DOWN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+            GPIO.setup(cfg.BUTTON_SELECT, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+            GPIO.setup(cfg.BUTTON_BACK, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
-        # Setup button callbacks
-        GPIO.add_event_detect(
-            cfg.BUTTON_UP,
-            GPIO.FALLING,
-            callback=lambda x: asyncio.create_task(
-                self.handle_button_press(cfg.BUTTON_UP)
-            ),
-            bouncetime=300,
-        )
-        # Add remaining button handlers...
-        
-    except Exception as e:
-        logger.error(f"Failed to set up GPIO: {e}")
-        # Continue without GPIO functionality
- 
+            # Setup button callbacks
+            GPIO.add_event_detect(
+                cfg.BUTTON_UP,
+                GPIO.FALLING,
+                callback=lambda x: asyncio.create_task(
+                    self.handle_button_press(cfg.BUTTON_UP)
+                ),
+                bouncetime=300,
+            )
+            GPIO.add_event_detect(
+                cfg.BUTTON_DOWN,
+                GPIO.FALLING,
+                callback=lambda x: asyncio.create_task(
+                    self.handle_button_press(cfg.BUTTON_DOWN)
+                ),
+                bouncetime=300,
+            )
+            GPIO.add_event_detect(
+                cfg.BUTTON_SELECT,
+                GPIO.FALLING,
+                callback=lambda x: asyncio.create_task(
+                    self.handle_button_press(cfg.BUTTON_SELECT)
+                ),
+                bouncetime=300,
+            )
+            GPIO.add_event_detect(
+                cfg.BUTTON_BACK,
+                GPIO.FALLING,
+                callback=lambda x: asyncio.create_task(
+                    self.handle_button_press(cfg.BUTTON_BACK)
+                ),
+                bouncetime=300,
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to set up GPIO: {e}")
+            # Continue without GPIO functionality
 
     async def handle_button_press(self, button: int) -> None:
         """Handle button press events"""
