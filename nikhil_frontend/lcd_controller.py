@@ -3,7 +3,7 @@ import json
 import logging
 import RPi.GPIO as GPIO
 from RPLCD.i2c import CharLCD
-from . import lcd_config as cfg
+import lcd_config as cfg
 from .lcd_interface import LCDInterface
 
 logger = logging.getLogger(__name__ + ".LCDController")
