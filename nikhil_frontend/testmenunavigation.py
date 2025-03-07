@@ -7,7 +7,7 @@ import os
 
 sys.path.append('/home/Documents/magmattic_backend/nikhil_frontend')
 
-from lcdcontroller import LCDController
+from nikhil_frontend.lcdcontroller import LCDController
 
 logging.basicConfig(
     level=logging.INFO,
