@@ -1,14 +1,16 @@
 from abc import ABC, abstractmethod
-import sys
-import os
-sys.path.append( '/home/magmattic/Documents/magmattic_backend/nikhil_frontend')
-from app_interface import AppComponent
+import asyncio
 
-class LCDInterface(AppComponent):
+class LCDInterface(ABC):
     """
     Abstract base class for LCD display interfaces.
-    Extends AppComponent to match Marton's architecture.
+    Follows similar pattern to Marton's FrontInterface while adding LCD-specific needs.
     """
+    
+    @abstractmethod
+    async def run(self) -> None:
+        """Main run loop for the LCD interface"""
+        pass
     
     @abstractmethod
     async def initialize_display(self) -> None:
