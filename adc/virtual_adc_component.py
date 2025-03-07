@@ -7,7 +7,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-frequencies = np.array([[5, 1], [10, 3], [20, 5]])
+frequencies = np.array([[0, 0.1], [5, 1], [10, 3], [20, 5]])
 
 
 class VirtualADCComponent(BaseADCComponent):
@@ -58,7 +58,7 @@ class VirtualADCComponent(BaseADCComponent):
                 2 * np.pi
             )
 
-            signal = np.sum(frequencies[:, [1]].T * np.sin(angles)) + 0.5
+            signal = np.sum(frequencies[:, [1]].T * np.sin(angles))
             data.append(signal)
             await asyncio.sleep(0.001)
         return angles, VirtualADCComponent.add_noise(data, noise_level=0.2)
