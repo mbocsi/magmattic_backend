@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append( '/home/magmattic/Documents/magmattic_backend/nikhil_frontend')
 from app_interface import AppComponent
 
 class LCDInterface(AppComponent):
