@@ -13,7 +13,7 @@ sys.path.extend([
 
 # Try multiple import methods
 try:
-    from lcdcontroller import LCDController
+    from lcd_controller import LCDController
 except ImportError:
     try:
         from nikhil_frontend.lcdcontroller import LCDController
