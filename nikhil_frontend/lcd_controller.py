@@ -98,18 +98,27 @@ class LCDController(LCDInterface):
                     logger.error(f"Failed to set up GPIO: {e}")
                     logger.info("Continuing without GPIO functionality")
 
-    async def process_button_presses(self) -> None:
-        """Process button presses from the queue"""
-        while True:
-            try:
-                # Wait for button press events from the queue
-                channel = await self.button_queue.get()
-                # Now handle the button press in the asyncio context
-                await self.handle_button_press(channel)
-            except Exception as e:
-                logger.error(f"Error processing button press: {e}")
-            # Short sleep to prevent CPU hogging
-            await asyncio.sleep(0.01)
+    async def poll_buttons(self) -> None:
+    """Poll buttons for state changes instead of using edge detection"""
+    while True:
+        try:
+            for button in [cfg.BUTTON_UP, cfg.BUTTON_DOWN, cfg.BUTTON_SELECT, cfg.BUTTON_BACK]:
+                current_state = GPIO.input(button)
+                previous_state = self.button_states[button]
+                
+                # Button press detected (HIGH to LOW transition with pull-up)
+                if previous_state == 1 and current_state == 0:
+                    logger.info(f"Button press detected on pin {button}")
+                    await self.handle_button_press(button)
+                
+                # Update state
+                self.button_states[button] = current_state
+                
+            # Short delay between polls
+            await asyncio.sleep(0.05)
+        except Exception as e:
+            logger.error(f"Error polling buttons: {e}")
+            await asyncio.sleep(1)  # Longer delay on error
 
     async def handle_button_press(self, button: int) -> None:
         """Handle button press events"""
