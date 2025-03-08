@@ -86,7 +86,7 @@ class LCDController(LCDInterface):
        
             # Instead of using edge detection, set up polling
             logger.info("Setting up GPIO polling instead of edge detection")
-            self.button_states = {
+            self.button_states = { 
             cfg.BUTTON_UP: GPIO.input(cfg.BUTTON_UP),
             cfg.BUTTON_DOWN: GPIO.input(cfg.BUTTON_DOWN),
             cfg.BUTTON_SELECT: GPIO.input(cfg.BUTTON_SELECT),
