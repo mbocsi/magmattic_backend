@@ -8,7 +8,6 @@ from lcd_interface import LCDInterface
 
 logger = logging.getLogger(__name__ + ".LCDController")
 
-
 class LCDController(LCDInterface):
     """
     Main LCD controller implementing the LCDInterface.
@@ -83,42 +82,41 @@ class LCDController(LCDInterface):
             GPIO.setup(cfg.BUTTON_SELECT, GPIO.IN, pull_up_down=GPIO.PUD_UP)
             GPIO.setup(cfg.BUTTON_BACK, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
-       
             # Instead of using edge detection, set up polling
             logger.info("Setting up GPIO polling instead of edge detection")
             self.button_states = { 
-            cfg.BUTTON_UP: GPIO.input(cfg.BUTTON_UP),
-            cfg.BUTTON_DOWN: GPIO.input(cfg.BUTTON_DOWN),
-            cfg.BUTTON_SELECT: GPIO.input(cfg.BUTTON_SELECT),
-            cfg.BUTTON_BACK: GPIO.input(cfg.BUTTON_BACK)
+                cfg.BUTTON_UP: GPIO.input(cfg.BUTTON_UP),
+                cfg.BUTTON_DOWN: GPIO.input(cfg.BUTTON_DOWN),
+                cfg.BUTTON_SELECT: GPIO.input(cfg.BUTTON_SELECT),
+                cfg.BUTTON_BACK: GPIO.input(cfg.BUTTON_BACK)
             }
             # Start button polling task
             asyncio.create_task(self.poll_buttons())
-                except Exception as e:
-                    logger.error(f"Failed to set up GPIO: {e}")
-                    logger.info("Continuing without GPIO functionality")
+        except Exception as e:
+            logger.error(f"Failed to set up GPIO: {e}")
+            logger.info("Continuing without GPIO functionality")
 
     async def poll_buttons(self) -> None:
-    """Poll buttons for state changes instead of using edge detection"""
-    while True:
-        try:
-            for button in [cfg.BUTTON_UP, cfg.BUTTON_DOWN, cfg.BUTTON_SELECT, cfg.BUTTON_BACK]:
-                current_state = GPIO.input(button)
-                previous_state = self.button_states[button]
-                
-                # Button press detected (HIGH to LOW transition with pull-up)
-                if previous_state == 1 and current_state == 0:
-                    logger.info(f"Button press detected on pin {button}")
-                    await self.handle_button_press(button)
-                
-                # Update state
-                self.button_states[button] = current_state
-                
-            # Short delay between polls
-            await asyncio.sleep(0.05)
-        except Exception as e:
-            logger.error(f"Error polling buttons: {e}")
-            await asyncio.sleep(1)  # Longer delay on error
+        """Poll buttons for state changes instead of using edge detection"""
+        while True:
+            try:
+                for button in [cfg.BUTTON_UP, cfg.BUTTON_DOWN, cfg.BUTTON_SELECT, cfg.BUTTON_BACK]:
+                    current_state = GPIO.input(button)
+                    previous_state = self.button_states[button]
+                    
+                    # Button press detected (HIGH to LOW transition with pull-up)
+                    if previous_state == 1 and current_state == 0:
+                        logger.info(f"Button press detected on pin {button}")
+                        await self.handle_button_press(button)
+                    
+                    # Update state
+                    self.button_states[button] = current_state
+                    
+                # Short delay between polls
+                await asyncio.sleep(0.05)
+            except Exception as e:
+                logger.error(f"Error polling buttons: {e}")
+                await asyncio.sleep(1)  # Longer delay on error
 
     async def handle_button_press(self, button: int) -> None:
         """Handle button press events"""
@@ -245,24 +243,4 @@ class LCDController(LCDInterface):
             # Initial display
             await self.update_display("Magnetometer", "Press SELECT:Menu")
             
-            # Start processing data
-            data_task = asyncio.create_task(self.process_data())
-
-            # Keep the main loop running
-            while True:
-                await asyncio.sleep(1)
-
-        except Exception as e:
-            logger.error(f"LCD controller error: {e}")
-        finally:
-            await self.cleanup()
-
-    async def cleanup(self) -> None:
-        """Cleanup GPIO and LCD resources"""
-        try:
-            if self.lcd:
-                await asyncio.to_thread(self.lcd.clear)
-                await asyncio.to_thread(self.lcd.close)
-            GPIO.cleanup()
-        except Exception as e:
-            logger.error(f"Cleanup error: {e}")
+            # Start processing
