@@ -83,28 +83,20 @@ class LCDController(LCDInterface):
             GPIO.setup(cfg.BUTTON_SELECT, GPIO.IN, pull_up_down=GPIO.PUD_UP)
             GPIO.setup(cfg.BUTTON_BACK, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
-            # Add button event detection with higher bouncetime
-            for pin_name, pin in [("UP", cfg.BUTTON_UP), 
-                                ("DOWN", cfg.BUTTON_DOWN), 
-                                ("SELECT", cfg.BUTTON_SELECT), 
-                                ("BACK", cfg.BUTTON_BACK)]:
-                try:
-                    GPIO.add_event_detect(
-                        pin,
-                        GPIO.FALLING,
-                        callback=button_callback,
-                        bouncetime=500,  # Increased from 300 to 500ms
-                    )
-                    logger.info(f"{pin_name} button configured successfully")
+       
+            # Instead of using edge detection, set up polling
+            logger.info("Setting up GPIO polling instead of edge detection")
+            self.button_states = {
+            cfg.BUTTON_UP: GPIO.input(cfg.BUTTON_UP),
+            cfg.BUTTON_DOWN: GPIO.input(cfg.BUTTON_DOWN),
+            cfg.BUTTON_SELECT: GPIO.input(cfg.BUTTON_SELECT),
+            cfg.BUTTON_BACK: GPIO.input(cfg.BUTTON_BACK)
+            }
+            # Start button polling task
+            asyncio.create_task(self.poll_buttons())
                 except Exception as e:
-                    logger.error(f"Failed to set up {pin_name} button: {e}")
-            
-            # Start task to process button presses from queue
-            asyncio.create_task(self.process_button_presses())
-                
-        except Exception as e:
-            logger.error(f"Failed to set up GPIO: {e}")
-            logger.info("Continuing without GPIO functionality")
+                    logger.error(f"Failed to set up GPIO: {e}")
+                    logger.info("Continuing without GPIO functionality")
 
     async def process_button_presses(self) -> None:
         """Process button presses from the queue"""
