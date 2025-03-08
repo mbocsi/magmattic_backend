@@ -8,6 +8,7 @@ from lcd_interface import LCDInterface
 
 logger = logging.getLogger(__name__ + ".LCDController")
 
+
 class LCDController(LCDInterface):
     """
     Main LCD controller implementing the LCDInterface.
@@ -243,4 +244,24 @@ class LCDController(LCDInterface):
             # Initial display
             await self.update_display("Magnetometer", "Press SELECT:Menu")
             
-            # Start processing
+            # Start processing data
+            data_task = asyncio.create_task(self.process_data())
+
+            # Keep the main loop running
+            while True:
+                await asyncio.sleep(1)
+
+        except Exception as e:
+            logger.error(f"LCD controller error: {e}")
+        finally:
+            await self.cleanup()
+
+    async def cleanup(self) -> None:
+        """Cleanup GPIO and LCD resources"""
+        try:
+            if self.lcd:
+                await asyncio.to_thread(self.lcd.clear)
+                await asyncio.to_thread(self.lcd.close)
+            GPIO.cleanup()
+        except Exception as e:
+            logger.error(f"Cleanup error: {e}")
