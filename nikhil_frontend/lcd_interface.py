@@ -39,7 +39,7 @@ class LCDInterface(ABC):
     @abstractmethod
     async def update_display_with_data(self) -> None:
         """Update display based on current view mode"""
-        passfrom abc import ABC, abstractmethod
+        from abc import ABC, abstractmethod
 import asyncio
 
 class LCDInterface(ABC):
