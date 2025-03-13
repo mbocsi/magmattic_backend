@@ -21,13 +21,38 @@ class App:
         self.pub_queue = pub_queue
         self.subs = defaultdict(lambda: [])
 
-    def registerSub(self, keys: list[str] | str, sub_queue: asyncio.Queue) -> None:
-        for key in keys:
-            self.subs[key].append(sub_queue)
+    def registerSub(self, topics: list[str] | str, sub_queue: asyncio.Queue) -> None:
+        for topic in topics:
+            if sub_queue not in self.subs[topic]:
+                self.subs[topic].append(sub_queue)
+            else:
+                logger.warning(
+                    f"This queue is already subscribed to {topic}: {sub_queue}"
+                )
+        logger.info(f"added subscriber to topics: {topics}")
+
+    def deleteSub(self, sub_queue: asyncio.Queue):
+        deletedTopics = []
+        for topic in self.subs.keys():
+            if sub_queue in self.subs[topic]:
+                deletedTopics.append(topic)
+                self.subs[topic].remove(sub_queue)
+        logger.info(f"Removed subscriber from topics: {deletedTopics}")
 
     async def broker(self) -> None:
         while True:
             data = await self.pub_queue.get()
+
+            if data["topic"] == "subscribe":
+                self.registerSub(
+                    data["payload"]["topics"], data["payload"]["sub_queue"]
+                )
+                continue
+
+            elif data["topic"] == "unsubscribe":
+                self.deleteSub(data["payload"])
+                continue
+
             for queue in self.subs.get(data["topic"], []):
                 await queue.put(data)
 
@@ -71,7 +96,7 @@ if __name__ == "__main__":
 
     # === Add queue subscriptions ===
     app.registerSub(["adc/command"], adc_sub_queue)
-    app.registerSub(["voltage/data", "fft/data", "motor/data"], ws_sub_queue)
+    # app.registerSub(["voltage/data", "fft/data", "motor/data"], ws_sub_queue)
     app.registerSub(["motor/command"], motor_sub_queue)
     app.registerSub(["fft/data"], lcd_sub_queue)
 

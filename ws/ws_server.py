@@ -30,6 +30,10 @@ class WebSocketComponent(AppComponent):
             data = await ws.recv()
             try:
                 data = json.loads(data)
+                if data["topic"] == "subscribe":
+                    data["payload"]["sub_queue"] = self.conn_data[
+                        ws
+                    ]  # Inject the queue
                 await self.pub_queue.put(data)
             except json.JSONDecodeError as e:
                 logger.warning(f"Error decoding JSON: {e}")
@@ -56,6 +60,9 @@ class WebSocketComponent(AppComponent):
         finally:
             send_task.cancel()
             receive_task.cancel()
+            await self.pub_queue.put(
+                {"topic": "unsubscribe", "payload": self.conn_data[ws]}
+            )
             del self.conn_data[ws]
             await asyncio.gather(send_task, receive_task, return_exceptions=True)
 
@@ -63,9 +70,9 @@ class WebSocketComponent(AppComponent):
         logger.info("starting WS server")
         async with serve(self.handle, self.host, self.port) as server:
             # Send data to each client subscriber
-            while True:
-                data = await self.sub_queue.get()
-                for q_data in self.conn_data.values():
-                    await q_data.put(data)
+            # while True:
+            #     data = await self.sub_queue.get()
+            #     for q_data in self.conn_data.values():
+            #         await q_data.put(data)
 
-            # await server.serve_forever()
+            await server.serve_forever()
