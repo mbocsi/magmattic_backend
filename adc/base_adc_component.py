@@ -11,8 +11,8 @@ logger = logging.getLogger(__name__)
 class BaseADCComponent(AppComponent):
     def __init__(
         self,
-        q_data: asyncio.Queue,
-        q_control: asyncio.Queue,
+        pub_queue: asyncio.Queue,
+        sub_queue: asyncio.Queue,
         addr: int = 0,
         pin: str = "D0",
         sample_rate: int = 13,
@@ -32,8 +32,8 @@ class BaseADCComponent(AppComponent):
             N (int, optional): The number of samples per buffer for ADC streaming. Defaults to 16.
             M (int, optional): The number of samples needed in the data buffer for calcuating FFT. Defaults to 1024.
         """
-        self.q_data = q_data
-        self.q_control = q_control
+        self.pub_queue = pub_queue
+        self.sub_queue = sub_queue
         self.Nbuf = Nbuf
         self.Nsig = Nsig
         self.sample_rate = sample_rate
@@ -55,7 +55,7 @@ class BaseADCComponent(AppComponent):
 
         logger.debug(f"sending voltage to queue: {buf}")
         # for val in buf:
-        await self.q_data.put({"type": "voltage", "val": buf})
+        await self.pub_queue.put({"topic": "voltage/data", "payload": buf})
 
     async def send_fft(self, data: list[float], T: float) -> None:
         """
@@ -79,22 +79,22 @@ class BaseADCComponent(AppComponent):
 
         freq = np.fft.rfftfreq(self.Ntot, d=T / self.Nsig)
 
-        await self.q_data.put(
+        await self.pub_queue.put(
             {
-                "type": "fft",
-                "val": [[f, v] for f, v in zip(freq, V1)],
+                "topic": "fft/data",
+                "payload": [[f, v] for f, v in zip(freq, V1)],
                 "metadata": {"window": self.window},
             }
         )
 
     async def recv_control(self) -> None:
         while True:
-            control = await self.q_control.get()
+            control = await self.sub_queue.get()
             if not self.stream_task:
                 continue
             original_values = {}
             try:
-                for var, value in control["value"].items():
+                for var, value in control["payload"].items():
                     if hasattr(self, var):
                         original_values[var] = getattr(self, var)
                     else:

@@ -7,8 +7,8 @@ logger = logging.getLogger(__name__)
 
 
 class BaseLCDComponent(AppComponent):
-    def __init__(self, q_data: asyncio.Queue, lcd_config=None):
-        self.q_data = q_data
+    def __init__(self, sub_queue: asyncio.Queue, lcd_config=None):
+        self.sub_queue = sub_queue
         self.lcd_config = lcd_config
         if lcd_config is None:
             self.lcd_config = {
@@ -26,8 +26,8 @@ class BaseLCDComponent(AppComponent):
     async def read_data(self) -> None:
         while True:
             try:
-                data = await self.q_data.get()
-                await self.update_lcd(*self.calculate_peak(data["val"]))
+                data = await self.sub_queue.get()
+                await self.update_lcd(*self.calculate_peak(data["payload"]))
             except Exception as e:
                 logger.warning(f"An exception occured when reading data: {e}")
 

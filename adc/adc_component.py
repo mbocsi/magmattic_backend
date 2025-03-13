@@ -10,8 +10,8 @@ logger = logging.getLogger(__name__)
 class ADCComponent(BaseADCComponent):
     def __init__(
         self,
-        q_data: asyncio.Queue,
-        q_control: asyncio.Queue,
+        pub_queue: asyncio.Queue,
+        sub_queue: asyncio.Queue,
         addr: int = 0,
         pin: str = "D0",
         sample_rate: int = 13,
@@ -20,8 +20,8 @@ class ADCComponent(BaseADCComponent):
         Ntot: int = 1024,
     ):
         super().__init__(
-            q_data,
-            q_control,
+            pub_queue=pub_queue,
+            sub_queue=sub_queue,
             addr=addr,
             pin=pin,
             sample_rate=sample_rate,

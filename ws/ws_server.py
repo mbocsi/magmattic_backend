@@ -10,25 +10,29 @@ logger = logging.getLogger(__name__)
 
 class WebSocketComponent(AppComponent):
     def __init__(
-        self, q_data: asyncio.Queue, q_control: asyncio.Queue, host: str, port: int
+        self, pub_queue: asyncio.Queue, sub_queue: asyncio.Queue, host: str, port: int
     ):
-        self.q_data: asyncio.Queue = q_data
-        self.q_control: asyncio.Queue = q_control
+        self.pub_queue: asyncio.Queue = pub_queue
+        self.sub_queue: asyncio.Queue = sub_queue
         self.host = host
         self.port = port
         self.conn_data: dict[ServerConnection, asyncio.Queue] = (
             {}
         )  # Store data subscribers
 
-    async def send_data(self, ws) -> None:
+    async def send(self, ws) -> None:
         while True:
             data = await self.conn_data[ws].get()  # Wait for new data
             await ws.send(json.dumps(data))  # Might not need to await
 
-    async def receive_control(self, ws) -> None:
+    async def recv(self, ws) -> None:
         while True:
-            control = await ws.recv()
-            await self.q_control.put(control)
+            data = await ws.recv()
+            try:
+                data = json.loads(data)
+                await self.pub_queue.put(data)
+            except json.JSONDecodeError as e:
+                logger.warning(f"Error decoding JSON: {e}")
 
     async def handle(self, ws) -> None:
         logger.info(
@@ -37,8 +41,8 @@ class WebSocketComponent(AppComponent):
         # Add new data subscriber
         self.conn_data[ws] = asyncio.Queue()
         # Start the async coroutines
-        send_task = asyncio.create_task(self.send_data(ws))
-        receive_task = asyncio.create_task(self.receive_control(ws))
+        send_task = asyncio.create_task(self.send(ws))
+        receive_task = asyncio.create_task(self.recv(ws))
 
         try:
             # Wait for the coroutines to end/raise an exception
@@ -60,7 +64,7 @@ class WebSocketComponent(AppComponent):
         async with serve(self.handle, self.host, self.port) as server:
             # Send data to each client subscriber
             while True:
-                data = await self.q_data.get()
+                data = await self.sub_queue.get()
                 for q_data in self.conn_data.values():
                     await q_data.put(data)
 

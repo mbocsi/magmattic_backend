@@ -7,19 +7,21 @@ logger = logging.getLogger(__name__)
 
 
 class BaseMotorComponent(AppComponent):
-    def __init__(self, q_data: asyncio.Queue, q_control: asyncio.Queue, init_speed=10):
-        self.q_data = q_data
-        self.q_control = q_control
+    def __init__(
+        self, pub_queue: asyncio.Queue, sub_queue: asyncio.Queue, init_speed=10
+    ):
+        self.pub_queue = pub_queue
+        self.sub_queue = sub_queue
         self.speed = init_speed
         self.angle = 0
 
     async def recv_control(self) -> None:
         while True:
-            control = await self.q_control.get()
+            control = await self.sub_queue.get()
             logger.info(f"recv control: {control}")
             original_values = {}
             try:
-                for var, value in control["value"].items():
+                for var, value in control["payload"].items():
                     if hasattr(self, var):
                         original_values[var] = getattr(self, var)
                     else:
@@ -31,8 +33,8 @@ class BaseMotorComponent(AppComponent):
                     setattr(self, var, value)
 
     async def send_data(self, angle: float, speed: float) -> None:
-        await self.q_data.put(
-            {"type": "motor", "val": {"speed": speed, "angle": angle}}
+        await self.pub_queue.put(
+            {"topic": "motor/data", "payload": {"speed": speed, "angle": angle}}
         )
 
     async def run(self) -> None:
