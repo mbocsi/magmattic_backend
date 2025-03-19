@@ -1,1 +1,1 @@
-from calculation_component import CalculationComponent
+from .calculation_component import CalculationComponent

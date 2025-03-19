@@ -2,6 +2,7 @@ import asyncio
 import logging
 from collections import defaultdict
 
+from calculation import CalculationComponent
 from adc import ADCComponent, VirtualADCComponent
 from app_interface import AppComponent
 from lcd import LCDComponent, VirtualLCDComponent
@@ -91,6 +92,11 @@ if __name__ == "__main__":
     # lcd = LCDComponent(lcd_data_queue)
     lcd = VirtualLCDComponent(sub_queue=lcd_sub_queue)
 
+    calculation_sub_queue = asyncio.Queue()
+    # calculation = CalculationComponent(
+    #     pub_queue=app_pub_queue, sub_queue=calculation_sub_queue
+    # )
+
     # === Initialize the app ===
     app = App(ws, motor, lcd, pub_queue=app_pub_queue)  # Inject dependencies
 
@@ -99,6 +105,7 @@ if __name__ == "__main__":
     # app.registerSub(["voltage/data", "fft/data", "motor/data"], ws_sub_queue)
     app.registerSub(["motor/command"], motor_sub_queue)
     app.registerSub(["fft/data"], lcd_sub_queue)
+    app.registerSub(["voltage/data"], calculation_sub_queue)
 
     logger.info("starting app")
     asyncio.run(app.run())

@@ -25,6 +25,7 @@ class CalculationComponent(AppComponent):
         self.window = "rectangular"
         self.sample_rate = 1200
         self.voltage_data: deque[float] = deque(maxlen=Nsig)
+        self.rolling_fft = False
 
         self.coil_resistance = 90  # ohms
         self.coil_turns = 1000
@@ -72,6 +73,8 @@ class CalculationComponent(AppComponent):
             match data["topic"]:
                 case "voltage/data":
                     self.voltage_data.extend(data["payload"])
+                    if len(self.voltage_data) < self.Nsig:
+                        continue
                     T = self.Nsig / self.sample_rate
                     fft = await self.calc_fft(self.voltage_data, T)
                     self.pub_queue.put_nowait(
@@ -83,8 +86,17 @@ class CalculationComponent(AppComponent):
                     )
                     voltage_amplitude = await self.calc_vampl(fft)
                     moment = await self.calc_moment(voltage_amplitude)
+                    self.pub_queue.put_nowait(
+                        {
+                            "topic": "moment/data",
+                            "payload": moment,
+                        }
+                    )
+                    if not self.rolling_fft:
+                        self.voltage_data.clear()
                 case _:
                     logger.warning(f"unknown topic received: {data["topic"]}")
 
     async def run(self):
+        logger.info("starting calculation")
         await self.recv_control()
