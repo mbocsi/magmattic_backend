@@ -95,7 +95,7 @@ class CalculationComponent(AppComponent):
                     if not self.rolling_fft:
                         self.voltage_data.clear()
                 case _:
-                    logger.warning(f"unknown topic received: {data["topic"]}")
+                    logger.warning(f"unknown topic received: {data['topic']}")
 
     async def run(self):
         logger.info("starting calculation")
