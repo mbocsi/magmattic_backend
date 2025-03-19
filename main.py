@@ -3,10 +3,10 @@ import logging
 from collections import defaultdict
 
 from adc import ADCComponent, VirtualADCComponent
-from ws import WebSocketComponent
-from motor import MotorComponent, VirtualMotorComponent
-from lcd import LCDComponent, VirtualLCDComponent
 from app_interface import AppComponent
+from lcd import LCDComponent, VirtualLCDComponent
+from motor import MotorComponent, VirtualMotorComponent
+from ws import WebSocketComponent
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ if __name__ == "__main__":
     # === Initialize ADC controller ===
     adc_sub_queue = asyncio.Queue()
     # adc = ADCComponent(pub_queue=app_pub_queue, sub_queue=adc_sub_queue)
-    adc = VirtualADCComponent(pub_queue=app_pub_queue, sub_queue=adc_sub_queue)
+    # adc = VirtualADCComponent(pub_queue=app_pub_queue, sub_queue=adc_sub_queue)
 
     # === Initialize Motor Controller ===
     motor_sub_queue = asyncio.Queue()
@@ -92,10 +92,10 @@ if __name__ == "__main__":
     lcd = VirtualLCDComponent(sub_queue=lcd_sub_queue)
 
     # === Initialize the app ===
-    app = App(ws, adc, motor, lcd, pub_queue=app_pub_queue)  # Inject dependencies
+    app = App(ws, motor, lcd, pub_queue=app_pub_queue)  # Inject dependencies
 
     # === Add queue subscriptions ===
-    app.registerSub(["adc/command"], adc_sub_queue)
+    # app.registerSub(["adc/command"], adc_sub_queue)
     # app.registerSub(["voltage/data", "fft/data", "motor/data"], ws_sub_queue)
     app.registerSub(["motor/command"], motor_sub_queue)
     app.registerSub(["fft/data"], lcd_sub_queue)
