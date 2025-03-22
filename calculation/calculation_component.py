@@ -106,10 +106,10 @@ class CalculationComponent(AppComponent):
                         }
                     )
                     voltage_amplitude, omega = await self.calc_vampl(fft)
-                    logger.info(f"{voltage_amplitude=}")
-                    logger.info(f"{omega=}")
+                    # logger.info(f"{voltage_amplitude=}")
+                    # logger.info(f"{omega=}")
                     bfield = await self.calc_bfield(voltage_amplitude, omega)
-                    logger.info(f"{bfield=}")
+                    # logger.info(f"{bfield=}")
                     self.pub_queue.put_nowait(
                         {
                             "topic": "bfield/data",
@@ -132,6 +132,8 @@ class CalculationComponent(AppComponent):
                 else:
                     raise AttributeError
                 setattr(self, var, value)
+                if var == "Nsig":
+                    self.voltage_data = deque(maxlen=value)
         except AttributeError:
             for var, value in original_values.items():
                 setattr(self, var, value)
