@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from scipy.signal.windows import hann, hamming, blackmanharris, blackman
 import numpy as np
 from collections.abc import Callable
+from type_defs import Window
 
 
 @dataclass
@@ -12,7 +13,7 @@ class WindowProperties:
     enbw: float
 
 
-windows = {
+windows: dict[Window, WindowProperties] = {
     "rectangular": WindowProperties(
         name="Rectangular", func=lambda x: np.ones((x,)), coherent_gain=1.0, enbw=1.0
     ),

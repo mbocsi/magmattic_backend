@@ -5,6 +5,7 @@ import logging
 import numpy as np
 import math
 from .windows import windows
+from type_defs import Window, CalculationStatus
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ class CalculationComponent(AppComponent):
         Nsig: int = 1024,
         Ntot: int = 1024,
         rolling_fft: bool = False,
-        window: str = "rectangular",
+        window: Window = "rectangular",
         coil_props: dict[str, float] | None = None,
     ):
         self.pub_queue = pub_queue
@@ -38,7 +39,7 @@ class CalculationComponent(AppComponent):
         self.Nsig = Nsig
         self.Ntot = Ntot
         self.rolling_fft = rolling_fft
-        self.window = window
+        self.window: Window = window
         self.sample_rate = 1200
         self.voltage_data: deque[float] = deque(maxlen=Nsig)
 
@@ -90,38 +91,41 @@ class CalculationComponent(AppComponent):
 
     async def recv_control(self) -> None:
         while True:
-            data = await self.sub_queue.get()
-            match data["topic"]:
-                case "voltage/data":
-                    self.voltage_data.extend(data["payload"])
-                    if len(self.voltage_data) < self.Nsig:
-                        continue
-                    T = self.Nsig / self.sample_rate
-                    fft = await self.calc_fft(self.voltage_data, T)
-                    self.pub_queue.put_nowait(
-                        {
-                            "topic": "fft/data",
-                            "payload": fft.tolist(),
-                            "metadata": {"window": self.window},
-                        }
-                    )
-                    voltage_amplitude, omega = await self.calc_vampl(fft)
-                    # logger.info(f"{voltage_amplitude=}")
-                    # logger.info(f"{omega=}")
-                    bfield = await self.calc_bfield(voltage_amplitude, omega)
-                    # logger.info(f"{bfield=}")
-                    self.pub_queue.put_nowait(
-                        {
-                            "topic": "bfield/data",
-                            "payload": bfield,
-                        }
-                    )
-                    if not self.rolling_fft:
-                        self.voltage_data.clear()
-                case "calculation/command":
-                    await self.control(data)
-                case _:
-                    logger.warning(f"unknown topic received: {data['topic']}")
+            try:
+                data = await self.sub_queue.get()
+                match data["topic"]:
+                    case "voltage/data":
+                        self.voltage_data.extend(data["payload"])
+                        if len(self.voltage_data) < self.Nsig:
+                            continue
+                        T = self.Nsig / self.sample_rate
+                        fft = await self.calc_fft(self.voltage_data, T)
+                        self.pub_queue.put_nowait(
+                            {
+                                "topic": "fft/data",
+                                "payload": fft.tolist(),
+                                "metadata": {"window": self.window},
+                            }
+                        )
+                        voltage_amplitude, omega = await self.calc_vampl(fft)
+                        # logger.info(f"{voltage_amplitude=}")
+                        # logger.info(f"{omega=}")
+                        bfield = await self.calc_bfield(voltage_amplitude, omega)
+                        # logger.info(f"{bfield=}")
+                        self.pub_queue.put_nowait(
+                            {
+                                "topic": "bfield/data",
+                                "payload": bfield,
+                            }
+                        )
+                        if not self.rolling_fft:
+                            self.voltage_data.clear()
+                    case "calculation/command":
+                        await self.control(data)
+                    case _:
+                        logger.warning(f"unknown topic received: {data['topic']}")
+            except Exception as e:
+                logger.error(f"An unexpected exception occured in recv_control: {e}")
 
     async def control(self, control):
         original_values = {}
@@ -132,12 +136,28 @@ class CalculationComponent(AppComponent):
                 else:
                     raise AttributeError
                 setattr(self, var, value)
+
                 if var == "Nsig":
                     self.voltage_data = deque(maxlen=value)
+
+                self.pub_queue.put_nowait(
+                    {"topic": "calculation/status", "payload": self.getStatus()}
+                )
         except AttributeError:
             for var, value in original_values.items():
                 setattr(self, var, value)
 
+    def getStatus(self) -> CalculationStatus:
+        return {
+            "Nsig": self.Nsig,
+            "Ntot": self.Ntot,
+            "rolling_fft": self.rolling_fft,
+            "window": self.window,
+        }
+
     async def run(self):
+        await self.pub_queue.put(
+            {"topic": "calculation/status", "payload": self.getStatus()}
+        )
         logger.info("starting calculation")
         await self.recv_control()

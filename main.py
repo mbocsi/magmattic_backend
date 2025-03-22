@@ -1,6 +1,8 @@
 import asyncio
 import logging
 from collections import defaultdict
+from typeguard import check_type, TypeCheckError
+
 
 from calculation import CalculationComponent
 from adc import ADCComponent, VirtualADCComponent
@@ -8,6 +10,7 @@ from app_interface import AppComponent
 from lcd import LCDComponent, VirtualLCDComponent
 from motor import MotorComponent, VirtualMotorComponent
 from ws import WebSocketComponent
+from type_defs import ADCStatus, CalculationStatus, Message
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +24,28 @@ class App:
         self.deps = deps
         self.pub_queue = pub_queue
         self.subs = defaultdict(lambda: [])
+        self.adc_status: ADCStatus | None = None
+        self.calculation_status: CalculationStatus | None = None
 
     def registerSub(self, topics: list[str] | str, sub_queue: asyncio.Queue) -> None:
         for topic in topics:
             if sub_queue not in self.subs[topic]:
                 self.subs[topic].append(sub_queue)
+                if self.adc_status is not None and topic == "adc/status":
+                    sub_queue.put_nowait(
+                        {"topic": "adc/status", "payload": self.adc_status}
+                    )
+                elif (
+                    self.calculation_status is not None
+                    and topic == "calculation/status"
+                ):
+                    sub_queue.put_nowait(
+                        {
+                            "topic": "calculation/status",
+                            "payload": self.calculation_status,
+                        }
+                    )
+
             else:
                 logger.warning(
                     f"This queue is already subscribed to {topic}: {sub_queue}"
@@ -42,20 +62,31 @@ class App:
 
     async def broker(self) -> None:
         while True:
-            data = await self.pub_queue.get()
+            try:
+                data = await self.pub_queue.get()
+                check_type(data, Message)
 
-            if data["topic"] == "subscribe":
-                self.registerSub(
-                    data["payload"]["topics"], data["payload"]["sub_queue"]
-                )
-                continue
+                match data["topic"]:
+                    case "subscribe":
+                        self.registerSub(
+                            data["payload"]["topics"], data["payload"]["sub_queue"]
+                        )
+                    case "unsubscribe":
+                        self.deleteSub(data["payload"])
+                    case "adc/status":
+                        check_type(data["payload"], ADCStatus)
+                        self.adc_status = data["payload"]
+                    case "calculation/status":
+                        check_type(data["payload"], CalculationStatus)
+                        self.calculation_status = data["payload"]
+                    case _:
+                        for queue in self.subs.get(data["topic"], []):
+                            await queue.put(data)
 
-            elif data["topic"] == "unsubscribe":
-                self.deleteSub(data["payload"])
-                continue
-
-            for queue in self.subs.get(data["topic"], []):
-                await queue.put(data)
+            except TypeCheckError as e:
+                logger.warning(f"Invalid message format: {data} -> {e}")
+            except Exception as e:
+                logger.error(f"There was an unexpected error in broker: {e}")
 
     async def run(self) -> None:
         await asyncio.gather(*[dep.run() for dep in self.deps], self.broker())

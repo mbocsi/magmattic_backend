@@ -3,6 +3,7 @@ numpy==1.26.4
 pi-plates==10.5
 websockets==10.4
 aiofiles==24.1.0
+typeguard==4.4.2
 
 # LCD and GPIO dependencies
 RPLCD==1.3.1
