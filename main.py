@@ -77,20 +77,20 @@ if __name__ == "__main__":
         pub_queue=app_pub_queue, sub_queue=ws_sub_queue, host="0.0.0.0", port=44444
     )
 
-    # === Initialize ADC controller ===
-    adc_sub_queue = asyncio.Queue()
+    # === Initialize ADC controller (PiPlate or Virtual ADC Only! Comment out if using ESP32) ===
+    # adc_sub_queue = asyncio.Queue()
     # adc = ADCComponent(pub_queue=app_pub_queue, sub_queue=adc_sub_queue)
-    adc = VirtualADCComponent(pub_queue=app_pub_queue, sub_queue=adc_sub_queue)
+    # adc = VirtualADCComponent(pub_queue=app_pub_queue, sub_queue=adc_sub_queue)
 
     # === Initialize Motor Controller ===
-    motor_sub_queue = asyncio.Queue()
+    # motor_sub_queue = asyncio.Queue()
     # motor = MotorComponent(data_queue, motor_control_queue)
-    motor = VirtualMotorComponent(pub_queue=app_pub_queue, sub_queue=motor_sub_queue)
+    # motor = VirtualMotorComponent(pub_queue=app_pub_queue, sub_queue=motor_sub_queue)
 
     # === Initialize LCD Component ===
-    lcd_sub_queue = asyncio.Queue()
+    # lcd_sub_queue = asyncio.Queue()
     # lcd = LCDComponent(lcd_data_queue)
-    lcd = VirtualLCDComponent(sub_queue=lcd_sub_queue)
+    # lcd = VirtualLCDComponent(sub_queue=lcd_sub_queue)
 
     calculation_sub_queue = asyncio.Queue()
     calculation = CalculationComponent(
@@ -98,16 +98,20 @@ if __name__ == "__main__":
     )
 
     # === Initialize the app ===
-    app = App(
-        ws, motor, lcd, calculation, pub_queue=app_pub_queue
-    )  # Inject dependencies
+    components = [ws, calculation]  # Add all components to this array
+    app = App(*components, pub_queue=app_pub_queue)
 
     # === Add queue subscriptions ===
+    app.registerSub(["voltage/data", "calculation/command"], calculation_sub_queue)
+
+    # Uncomment this if using motor component
+    # app.registerSub(["motor/command"], motor_sub_queue)
+
+    # Uncomment this if using lcd
+    # app.registerSub(["fft/data"], lcd_sub_queue)
+
+    # Only uncomment this if using PiPlate or Virtual ADC
     # app.registerSub(["adc/command"], adc_sub_queue)
-    # app.registerSub(["voltage/data", "fft/data", "motor/data"], ws_sub_queue)
-    app.registerSub(["motor/command"], motor_sub_queue)
-    app.registerSub(["fft/data"], lcd_sub_queue)
-    app.registerSub(["voltage/data", "adc/command"], calculation_sub_queue)
 
     logger.info("starting app")
     asyncio.run(app.run())
