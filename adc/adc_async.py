@@ -1,3 +1,7 @@
+"""
+Extending the ADCplate library for use with synchronous python
+"""
+
 import piplates.ADCplate as ADC
 from piplates.ADCplate import *  # type: ignore
 import asyncio

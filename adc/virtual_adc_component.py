@@ -1,8 +1,6 @@
 from . import BaseADCComponent
 import asyncio
-from collections import deque
 import numpy as np
-import math
 import logging
 
 logger = logging.getLogger(__name__)
@@ -64,18 +62,13 @@ class VirtualADCComponent(BaseADCComponent):
         return angles, VirtualADCComponent.add_noise(data, noise_level=0.2)
 
     async def stream_adc(self) -> None:
-        data: deque[float] = deque(maxlen=self.Nsig)
+        # data: deque[float] = deque(maxlen=self.Nsig)
         angles = np.zeros((1, frequencies.shape[0]))
         try:
             while True:
                 angles, values = await VirtualADCComponent.sin_stream(angles, self.Nbuf)
                 await self.send_voltage(values)
-                data.extend(values)
-                if len(data) >= self.Nsig:
-                    T = self.Nsig / 1007  # Sample rate is 1007
-                    await self.send_fft(list(data), T)
-                    if not self.rolling_fft:
-                        data.clear()
+                await asyncio.sleep(0)
         except asyncio.CancelledError:
             logger.debug("stream_adc() cancelled")
         except Exception as e:

@@ -80,7 +80,7 @@ if __name__ == "__main__":
     # === Initialize ADC controller ===
     adc_sub_queue = asyncio.Queue()
     # adc = ADCComponent(pub_queue=app_pub_queue, sub_queue=adc_sub_queue)
-    # adc = VirtualADCComponent(pub_queue=app_pub_queue, sub_queue=adc_sub_queue)
+    adc = VirtualADCComponent(pub_queue=app_pub_queue, sub_queue=adc_sub_queue)
 
     # === Initialize Motor Controller ===
     motor_sub_queue = asyncio.Queue()
@@ -93,19 +93,21 @@ if __name__ == "__main__":
     lcd = VirtualLCDComponent(sub_queue=lcd_sub_queue)
 
     calculation_sub_queue = asyncio.Queue()
-    # calculation = CalculationComponent(
-    #     pub_queue=app_pub_queue, sub_queue=calculation_sub_queue
-    # )
+    calculation = CalculationComponent(
+        pub_queue=app_pub_queue, sub_queue=calculation_sub_queue, Nsig=1200, Ntot=1200
+    )
 
     # === Initialize the app ===
-    app = App(ws, motor, lcd, pub_queue=app_pub_queue)  # Inject dependencies
+    app = App(
+        ws, motor, lcd, calculation, pub_queue=app_pub_queue
+    )  # Inject dependencies
 
     # === Add queue subscriptions ===
     # app.registerSub(["adc/command"], adc_sub_queue)
     # app.registerSub(["voltage/data", "fft/data", "motor/data"], ws_sub_queue)
     app.registerSub(["motor/command"], motor_sub_queue)
     app.registerSub(["fft/data"], lcd_sub_queue)
-    app.registerSub(["voltage/data"], calculation_sub_queue)
+    app.registerSub(["voltage/data", "adc/command"], calculation_sub_queue)
 
     logger.info("starting app")
     asyncio.run(app.run())
