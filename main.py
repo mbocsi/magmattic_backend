@@ -114,9 +114,9 @@ if __name__ == "__main__":
     # adc = VirtualADCComponent(pub_queue=app_pub_queue, sub_queue=adc_sub_queue)
 
     # === Initialize Motor Controller ===
-    # motor_sub_queue = asyncio.Queue()
+    motor_sub_queue = asyncio.Queue()
     # motor = MotorComponent(data_queue, motor_control_queue)
-    # motor = VirtualMotorComponent(pub_queue=app_pub_queue, sub_queue=motor_sub_queue)
+    motor = VirtualMotorComponent(pub_queue=app_pub_queue, sub_queue=motor_sub_queue)
 
     # === Initialize LCD Component ===
     # lcd_sub_queue = asyncio.Queue()
@@ -129,14 +129,14 @@ if __name__ == "__main__":
     )
 
     # === Initialize the app ===
-    components = [ws, calculation]  # Add all components to this array
+    components = [ws, calculation, motor]  # Add all components to this array
     app = App(*components, pub_queue=app_pub_queue)
 
     # === Add queue subscriptions ===
     app.registerSub(["voltage/data", "calculation/command"], calculation_sub_queue)
 
     # Uncomment this if using motor component
-    # app.registerSub(["motor/command"], motor_sub_queue)
+    app.registerSub(["motor/command"], motor_sub_queue)
 
     # Uncomment this if using lcd
     # app.registerSub(["fft/data"], lcd_sub_queue)
