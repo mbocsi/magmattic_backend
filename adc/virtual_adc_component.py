@@ -62,7 +62,6 @@ class VirtualADCComponent(BaseADCComponent):
         return angles, VirtualADCComponent.add_noise(data, noise_level=0.2)
 
     async def stream_adc(self) -> None:
-        # data: deque[float] = deque(maxlen=self.Nsig)
         angles = np.zeros((1, frequencies.shape[0]))
         try:
             while True:

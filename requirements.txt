@@ -2,6 +2,7 @@
 numpy==1.26.4
 pi-plates==10.5
 websockets==10.4
+scipy==1.15.1
 aiofiles==24.1.0
 typeguard==4.4.2
 
