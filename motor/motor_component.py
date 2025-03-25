@@ -11,7 +11,7 @@ class MotorComponent(BaseMotorComponent):
 
     def __init__(self, *args, **kargs):
         super.__init__(*args, **kargs)
-        import RPi.GPIO as GPIO
+        import RPi.GPIO as GPIO  # type: ignore
 
         self.GPIO = GPIO
 

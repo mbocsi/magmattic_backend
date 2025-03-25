@@ -1,4 +1,4 @@
-import RPi.GPIO as GPIO
+import RPi.GPIO as GPIO  # type: ignore
 from .motor_config import *
 import time
 
