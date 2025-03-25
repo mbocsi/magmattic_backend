@@ -76,9 +76,13 @@ class App:
                     case "adc/status":
                         check_type(data["payload"], ADCStatus)
                         self.adc_status = data["payload"]
+                        for queue in self.subs.get(data["topic"], []):
+                            await queue.put(data)
                     case "calculation/status":
                         check_type(data["payload"], CalculationStatus)
                         self.calculation_status = data["payload"]
+                        for queue in self.subs.get(data["topic"], []):
+                            await queue.put(data)
                     case _:
                         for queue in self.subs.get(data["topic"], []):
                             await queue.put(data)
