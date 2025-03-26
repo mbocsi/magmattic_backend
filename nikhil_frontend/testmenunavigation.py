@@ -1,10 +1,9 @@
 import asyncio
 import logging
-import json
+import random
 import math
 import sys
 import os
-import random
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from nikhil_frontend import LCDController
 
@@ -16,6 +15,9 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+# Simulated ADC channel for potentiometer reading
+pot_value = 341  # Middle position by default
+
 async def generate_test_data(q_data: asyncio.Queue):
     """Generate simulated voltage and FFT data for testing"""
     angle = 0
@@ -24,31 +26,47 @@ async def generate_test_data(q_data: asyncio.Queue):
             # Generate voltage data (sine wave with noise)
             angle = (angle + 0.1) % (2 * math.pi)
             voltage = math.sin(angle) + random.uniform(-0.1, 0.1)
-            await q_data.put({"type": "voltage", "val": [voltage]})
+            
+            # Send voltage data
+            await q_data.put({
+                "topic": "voltage/data", 
+                "payload": [voltage]
+            })
 
             # Generate FFT data (multiple frequency components)
             # Primary peak at 50Hz
             primary_peak = [50.0, abs(voltage) * 0.8]
             # Secondary peak at 100Hz
             secondary_peak = [100.0, abs(voltage) * 0.5]
-            # Tertiary peak at 150Hz
-            tertiary_peak = [150.0, abs(voltage) * 0.3]
             # Some noise peaks
             noise_peaks = [
                 [25.0, random.uniform(0.05, 0.1)],
-                [75.0, random.uniform(0.05, 0.1)],
-                [125.0, random.uniform(0.05, 0.1)]
+                [75.0, random.uniform(0.05, 0.1)]
             ]
             
             # Combine all peaks
-            fft_data = [primary_peak, secondary_peak, tertiary_peak] + noise_peaks
+            fft_data = [primary_peak, secondary_peak] + noise_peaks
             
-            await q_data.put({"type": "fft", "val": fft_data})
+            # Send FFT data
+            await q_data.put({
+                "topic": "fft/data", 
+                "payload": fft_data
+            })
             
             await asyncio.sleep(0.1)  # Update every 100ms
 
     except asyncio.CancelledError:
         pass
+
+# Mock function to simulate reading potentiometer
+async def mock_read_potentiometer(channel):
+    global pot_value
+    # Occasionally simulate user adjusting the potentiometer
+    if random.random() < 0.01:  # 1% chance each cycle
+        adjustment = random.choice([-30, -15, 15, 30])  # Random adjustment
+        pot_value = max(0, min(1023, pot_value + adjustment))  # Keep in range
+        logger.info(f"Simulated potentiometer adjustment to {pot_value}")
+    return pot_value
 
 async def main():
     # Initialize queues for testing
@@ -58,13 +76,26 @@ async def main():
     # Create LCD controller
     lcd = LCDController(q_data, q_control)
     
+    # Replace the potentiometer reading with our mock function
+    lcd.read_potentiometer = mock_read_potentiometer
+    
     # Start data generation in background
     data_task = asyncio.create_task(generate_test_data(q_data))
+    
+    # Monitor control messages
+    async def monitor_control():
+        while True:
+            control_msg = await q_control.get()
+            logger.info(f"Control message sent: {control_msg}")
+    
+    control_task = asyncio.create_task(monitor_control())
     
     # Run the controller
     try:
         logger.info("Starting LCD controller test")
-        logger.info("Use UP/DOWN to navigate, SELECT to choose, BACK to cycle views")
+        logger.info("B1: Toggle between B-field and FFT views")
+        logger.info("B2: Toggle display power on/off")
+        logger.info("POT1: Simulated random adjustments to data acquisition time")
         logger.info("Press Ctrl+C to exit")
         
         # Run the LCD controller
@@ -80,6 +111,7 @@ async def main():
     finally:
         # Cancel all tasks
         data_task.cancel()
+        control_task.cancel()
         # Ensure cleanup is called
         await lcd.cleanup()
         logger.info("Test complete")
