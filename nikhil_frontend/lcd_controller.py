@@ -72,8 +72,8 @@ class LCDController(LCDInterface):
         # Button states for debouncing
         self.button_states = {}
         
-        # Conversion factors (to be adjusted based on circuit characteristics)
-        self.voltage_to_tesla_factor = 1.0  # Convert voltage to Tesla
+        # Track peak frequency for B-field calculations
+        self.peak_freq = 50.0  # Default frequency (Hz)
 
     async def initialize_display(self) -> None:
         """Initialize the LCD display and GPIO pins"""
@@ -387,10 +387,25 @@ class LCDController(LCDInterface):
         return max(fft_data, key=lambda x: x[1])
     
     def calculate_b_field(self, voltage: float) -> float:
-        """Convert voltage to magnetic field strength (Tesla)"""
-        # This conversion depends on circuit characteristics
-        # Update the formula based on experimental calibration
-        return voltage * self.voltage_to_tesla_factor
+        """Convert voltage to magnetic field strength (Tesla) using Marton's formula"""
+        # Define coil properties
+        coil_props = {
+            "impedence": 90,     # Coil impedance in ohms
+            "windings": 1000,    # Number of coil windings
+            "area": 0.01         # Coil area in square meters
+        }
+        
+        # Get estimated frequency from FFT data (default to 50Hz if no data)
+        if self.fft_data and len(self.fft_data) > 0:
+            omega = self.peak_freq * 2 * 3.14159  # Convert Hz to radians/sec
+        else:
+            omega = 50 * 2 * 3.14159  # Default 50Hz
+        
+        # Calculate B-field using Faraday's law: V = N * A * dB/dt
+        # Rearranged: B = V / (N * A * ω)
+        b_field = voltage / (coil_props["windings"] * coil_props["area"] * omega)
+        
+        return b_field
 
     def format_magnetic_field(self, value: float) -> str:
         """Format magnetic field value with appropriate unit (T, mT, μT)"""
