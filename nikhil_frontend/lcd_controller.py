@@ -240,16 +240,26 @@ class LCDController(LCDInterface):
                 logger.error(f"Error polling potentiometers: {e}")
                 await asyncio.sleep(1)  # Longer delay on error
 
-    async def read_potentiometer(self, channel: int) -> int:
-        """Read analog value from potentiometer using ADC"""
-        try:
-            # This is a placeholder - implementation will depend on ADC setup
-            # Since Marton's ADC code already exists,  would read from that
-            # For testing, return a simulated value
-            return 341  # Middle value (corresponds to ~1s acquisition time)
-        except Exception as e:
-            logger.error(f"Error reading potentiometer: {e}")
-            return 0
+async def read_potentiometer(self, channel: int) -> int:
+    """Read analog value from potentiometer using ADC"""
+    try:
+        # If we already have voltage data in our buffer, use it
+        if self.voltage_buffer:
+            # Convert voltage (typically 0-5V) to ADC range (0-1023)
+            # Use the latest voltage value from the buffer
+            # Channel indicates which value to read if multiple channels exist
+            if channel < len(self.last_voltage_values):
+                voltage = self.last_voltage_values[channel]
+                # Map voltage to potentiometer range (0-1023)
+                pot_value = int((voltage / 5.0) * 1023)
+                # Ensure value is within range
+                return max(0, min(1023, pot_value))
+            
+        # If no data available yet, return default middle position
+        return self.last_pot_value
+    except Exception as e:
+        logger.error(f"Error reading potentiometer: {e}")
+        return self.last_pot_value
 
     async def send_acquisition_time_update(self) -> None:
         """Send updated data acquisition time to ADC controller"""
@@ -392,65 +402,57 @@ class LCDController(LCDInterface):
         else:
             return f"{seconds*1000:.0f}ms"
             
-    async def process_data(self) -> None:
-        """Process incoming data from queue"""
-        while True:
-            try:
-                data = await self.q_data.get()
-                
-                # Handle both string and dict data formats
-                if isinstance(data, str):
-                    try:
-                        data_dict = json.loads(data)
-                    except json.JSONDecodeError:
-                        logger.error(f"Invalid JSON data: {data}")
-                        continue
-                else:
-                    data_dict = data
-                
-                # Process voltage data
-                if data_dict.get("topic") == "voltage/data":
-                    payload = data_dict.get("payload", [])
-                    if isinstance(payload, list) and len(payload) > 0:
-                        try:
-                            # Ensure we have numeric values
-                            numeric_values = [float(v) for v in payload if isinstance(v, (int, float)) or (isinstance(v, str) and v.replace('.', '', 1).isdigit())]
-                            if numeric_values:
-                                voltage = sum(numeric_values) / len(numeric_values)  # Average voltage
-                                self.last_voltage = voltage
-                                self.voltage_buffer.append(voltage)
-                                
-                                # Calculate B field from voltage
-                                self.b_field = voltage * self.voltage_to_tesla_factor
-                        except Exception as e:
-                            logger.error(f"Error processing voltage data: {e}")
-                
-                # Process FFT data
-                elif data_dict.get("topic") == "fft/data":
-                    payload = data_dict.get("payload", [])
-                    # Make sure FFT data is valid
-                    if isinstance(payload, list):
-                        try:
-                            # Validate each entry is a [freq, mag] pair
-                            valid_entries = [entry for entry in payload if (
-                                isinstance(entry, list) and 
-                                len(entry) == 2 and 
-                                all(isinstance(v, (int, float)) or (isinstance(v, str) and v.replace('.', '', 1).isdigit()) for v in entry)
-                            )]
-                            if valid_entries:
-                                self.fft_data = [[float(freq), float(mag)] for freq, mag in valid_entries]
-                        except Exception as e:
-                            logger.error(f"Error processing FFT data: {e}")
-
-                # Update display if not in adjusting state and display is active
-                if self.current_state != State.ADJUSTING and self.display_active:
-                    await self.update_display_with_state()
-
-            except Exception as e:
-                logger.error(f"Error processing data: {e}")
+async def process_data(self) -> None:
+    """Process incoming data from queue"""
+    while True:
+        try:
+            data = await self.q_data.get()
             
-            # Small delay to prevent CPU overload
-            await asyncio.sleep(0.05)
+            # Handle both string and dict data formats
+            if isinstance(data, str):
+                try:
+                    data_dict = json.loads(data)
+                except json.JSONDecodeError:
+                    logger.error(f"Invalid JSON data: {data}")
+                    continue
+            else:
+                data_dict = data
+
+            # Process voltage data
+            if data_dict["topic"] == "voltage/data":
+                if isinstance(data_dict["payload"], list) and len(data_dict["payload"]) > 0:
+                    # Store all voltage values for potentiometer reading
+                    self.last_voltage_values = data_dict["payload"]
+                    
+                    # Calculate B-field from voltage
+                    voltage = data_dict["payload"][0]
+                    self.last_voltage = voltage
+                    self.voltage_buffer.append(voltage)
+                    self.b_field = self.calculate_b_field(voltage)
+                    
+                    # Update statistics
+                    if self.voltage_buffer:
+                        self.min_voltage = min(self.voltage_buffer)
+                        self.max_voltage = max(self.voltage_buffer)
+                        self.avg_voltage = sum(self.voltage_buffer) / len(self.voltage_buffer)
+            
+            # Process FFT data
+            elif data_dict["topic"] == "fft/data":
+                self.fft_data = data_dict["payload"]  # List of [freq, magnitude]
+                
+                # Calculate peak
+                if self.fft_data:
+                    self.peak_freq, self.peak_mag = self.calculate_peak(self.fft_data)
+
+            # Update display if not in adjusting state
+            if self.current_state != State.ADJUSTING and self.current_state != State.OFF:
+                await self.update_display_with_state()
+
+        except Exception as e:
+            logger.error(f"Error processing data: {e}")
+        
+        # Small delay to prevent CPU overload
+        await asyncio.sleep(0.01)
             
     async def run(self) -> None:
         """Main run loop"""
