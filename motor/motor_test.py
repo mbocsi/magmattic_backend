@@ -6,7 +6,7 @@ import numpy as np
 # Test script for motor controller (mine now, sorry not sorry gemini)
 
 # Setup GPIO
-GPIO.setmode(GPIO.BOARD)  # Maybe board
+GPIO.setmode(GPIO.BCM)  # Maybe board
 GPIO.setup(PUL, GPIO.OUT)
 GPIO.setup(DIR, GPIO.OUT)
 GPIO.setup(ENA, GPIO.OUT)

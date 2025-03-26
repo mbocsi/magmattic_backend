@@ -15,7 +15,7 @@ class MotorComponent(BaseMotorComponent):
 
         self.GPIO = GPIO
 
-        GPIO.setmode(GPIO.BOARD)
+        GPIO.setmode(GPIO.BCM)
         GPIO.setup(PUL, GPIO.OUT)
         GPIO.setup(DIR, GPIO.OUT, initial=np.sign(self.freq))
         GPIO.setup(ENA, GPIO.OUT, initial=GPIO.HIGH)
