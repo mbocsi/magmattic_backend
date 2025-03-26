@@ -17,26 +17,27 @@ class MotorComponent(BaseMotorComponent):
 
         GPIO.setmode(GPIO.BOARD)
         GPIO.setup(PUL, GPIO.OUT)
-        GPIO.setup(DIR, GPIO.OUT, initial=np.sign(self.omega))
+        GPIO.setup(DIR, GPIO.OUT, initial=np.sign(self.freq))
         GPIO.setup(ENA, GPIO.OUT, initial=GPIO.HIGH)
-        self.pulse_pin = GPIO.PWM(PUL, abs(self.omega * STEPS_PER_REV))
 
     async def stream_data(self) -> None:
         try:
-            if self.omega == 0:
-                raise ValueError("Omega is 0")
+            pulse_pin = self.GPIO.PWM(PUL, abs(self.freq * STEPS_PER_REV))
 
-            delay = 1 / (STEPS_PER_REV * abs(self.omega))
-            delta_theta = np.sign(self.omega) * (np.pi * 2) / STEPS_PER_REV
+            if self.freq == 0:
+                raise ValueError("freq is 0")
+
+            delay = 1 / (STEPS_PER_REV * abs(self.freq))
+            delta_theta = np.sign(self.freq) * (np.pi * 2) / STEPS_PER_REV
 
             self.GPIO.output(ENA, self.GPIO.LOW)
-            self.GPIO.output(DIR, np.sign(self.omega))
-            self.pulse_pin.start(DUTY)
+            self.GPIO.output(DIR, np.sign(self.freq))
+            pulse_pin.start(DUTY)
 
-            # TODO: convert this loop into a scheduled routine
+            # TODO: convert this loop into a interrupt routine on the pulse pin
             while True:
                 self.theta = (self.theta + delta_theta) % (np.pi * 2)
-                await self.send_data(self.theta, self.omega)
+                await self.send_data(self.theta, self.freq)
                 await asyncio.sleep(delay)
 
         except asyncio.CancelledError:
@@ -46,5 +47,5 @@ class MotorComponent(BaseMotorComponent):
         except Exception as e:
             logger.error(f"An unexpected exception was raised: {e}")
         finally:
-            self.pulse_pin.stop()
+            pulse_pin.stop()
             self.GPIO.output(ENA, self.GPIO.HIGH)

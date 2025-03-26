@@ -8,11 +8,11 @@ logger = logging.getLogger(__name__)
 
 class BaseMotorComponent(AppComponent):
     def __init__(
-        self, pub_queue: asyncio.Queue, sub_queue: asyncio.Queue, init_speed=1
+        self, pub_queue: asyncio.Queue, sub_queue: asyncio.Queue, init_speed=0
     ):
         self.pub_queue = pub_queue
         self.sub_queue = sub_queue
-        self.omega = init_speed
+        self.freq = init_speed
         self.theta = 0
         self.stream_task: asyncio.Task | None = None
 
@@ -34,7 +34,7 @@ class BaseMotorComponent(AppComponent):
                     )  # Attempt restart streaming task
                     continue
                 if any(
-                    var in original_values.keys() for var in ["omega"]
+                    var in original_values.keys() for var in ["freq"]
                 ):  # Need to restart adc stream
                     self.stream_task.cancel()
                     self.stream_task = asyncio.create_task(self.stream_data())
@@ -43,9 +43,9 @@ class BaseMotorComponent(AppComponent):
                 for var, value in original_values.items():
                     setattr(self, var, value)
 
-    async def send_data(self, theta: float, omega: float) -> None:
+    async def send_data(self, theta: float, freq: float) -> None:
         await self.pub_queue.put(
-            {"topic": "motor/data", "payload": {"omega": omega, "theta": theta}}
+            {"topic": "motor/data", "payload": {"freq": freq, "theta": theta}}
         )
 
     async def run(self) -> None:
