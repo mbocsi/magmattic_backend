@@ -55,9 +55,12 @@ class LCDController(LCDInterface):
         self.voltage_buffer = deque(maxlen=100)
         self.fft_data = []
         self.last_voltage = 0.0
+        self.last_voltage_values = []  # Store all voltage channels
         self.b_field = 0.0  # Magnetic field in Tesla
         self.data_acquisition_time = DEFAULT_DAT
-        self.last_pot_value = 0
+        self.last_pot_value = 341  # Middle position by default
+        self.peak_freq = 0.0
+        self.peak_mag = 0.0
         
         # Potentiometer adjustment time tracking
         self.pot_last_change_time = 0
@@ -240,26 +243,24 @@ class LCDController(LCDInterface):
                 logger.error(f"Error polling potentiometers: {e}")
                 await asyncio.sleep(1)  # Longer delay on error
 
-async def read_potentiometer(self, channel: int) -> int:
-    """Read analog value from potentiometer using ADC"""
-    try:
-        # If we already have voltage data in our buffer, use it
-        if self.voltage_buffer:
-            # Convert voltage (typically 0-5V) to ADC range (0-1023)
-            # Use the latest voltage value from the buffer
-            # Channel indicates which value to read if multiple channels exist
-            if channel < len(self.last_voltage_values):
-                voltage = self.last_voltage_values[channel]
-                # Map voltage to potentiometer range (0-1023)
-                pot_value = int((voltage / 5.0) * 1023)
-                # Ensure value is within range
-                return max(0, min(1023, pot_value))
+    async def read_potentiometer(self, channel: int) -> int:
+        """Read analog value from potentiometer using ADC"""
+        try:
+            # If we already have voltage data in our buffer, use it
+            if hasattr(self, 'last_voltage_values') and self.last_voltage_values:
+                # Check if we have data for the requested channel
+                if channel < len(self.last_voltage_values):
+                    voltage = self.last_voltage_values[channel]
+                    # Map voltage (0-5V) to potentiometer range (0-1023)
+                    pot_value = int((voltage / 5.0) * 1023)
+                    # Ensure value is within range
+                    return max(0, min(1023, pot_value))
             
-        # If no data available yet, return default middle position
-        return self.last_pot_value
-    except Exception as e:
-        logger.error(f"Error reading potentiometer: {e}")
-        return self.last_pot_value
+            # If no data available yet, return last known value
+            return self.last_pot_value
+        except Exception as e:
+            logger.error(f"Error reading potentiometer: {e}")
+            return self.last_pot_value
 
     async def send_acquisition_time_update(self) -> None:
         """Send updated data acquisition time to ADC controller"""
@@ -384,6 +385,12 @@ async def read_potentiometer(self, channel: int) -> int:
             
         # Find the point with maximum magnitude
         return max(fft_data, key=lambda x: x[1])
+    
+    def calculate_b_field(self, voltage: float) -> float:
+        """Convert voltage to magnetic field strength (Tesla)"""
+        # This conversion depends on circuit characteristics
+        # Update the formula based on experimental calibration
+        return voltage * self.voltage_to_tesla_factor
 
     def format_magnetic_field(self, value: float) -> str:
         """Format magnetic field value with appropriate unit (T, mT, μT)"""
@@ -402,57 +409,51 @@ async def read_potentiometer(self, channel: int) -> int:
         else:
             return f"{seconds*1000:.0f}ms"
             
-async def process_data(self) -> None:
-    """Process incoming data from queue"""
-    while True:
-        try:
-            data = await self.q_data.get()
-            
-            # Handle both string and dict data formats
-            if isinstance(data, str):
-                try:
-                    data_dict = json.loads(data)
-                except json.JSONDecodeError:
-                    logger.error(f"Invalid JSON data: {data}")
-                    continue
-            else:
-                data_dict = data
-
-            # Process voltage data
-            if data_dict["topic"] == "voltage/data":
-                if isinstance(data_dict["payload"], list) and len(data_dict["payload"]) > 0:
-                    # Store all voltage values for potentiometer reading
-                    self.last_voltage_values = data_dict["payload"]
-                    
-                    # Calculate B-field from voltage
-                    voltage = data_dict["payload"][0]
-                    self.last_voltage = voltage
-                    self.voltage_buffer.append(voltage)
-                    self.b_field = self.calculate_b_field(voltage)
-                    
-                    # Update statistics
-                    if self.voltage_buffer:
-                        self.min_voltage = min(self.voltage_buffer)
-                        self.max_voltage = max(self.voltage_buffer)
-                        self.avg_voltage = sum(self.voltage_buffer) / len(self.voltage_buffer)
-            
-            # Process FFT data
-            elif data_dict["topic"] == "fft/data":
-                self.fft_data = data_dict["payload"]  # List of [freq, magnitude]
+    async def process_data(self) -> None:
+        """Process incoming data from queue"""
+        while True:
+            try:
+                data = await self.q_data.get()
                 
-                # Calculate peak
-                if self.fft_data:
-                    self.peak_freq, self.peak_mag = self.calculate_peak(self.fft_data)
+                # Handle both string and dict data formats
+                if isinstance(data, str):
+                    try:
+                        data_dict = json.loads(data)
+                    except json.JSONDecodeError:
+                        logger.error(f"Invalid JSON data: {data}")
+                        continue
+                else:
+                    data_dict = data
 
-            # Update display if not in adjusting state
-            if self.current_state != State.ADJUSTING and self.current_state != State.OFF:
-                await self.update_display_with_state()
+                # Process voltage data
+                if data_dict["topic"] == "voltage/data":
+                    if isinstance(data_dict["payload"], list) and len(data_dict["payload"]) > 0:
+                        # Store all voltage values for potentiometer reading
+                        self.last_voltage_values = data_dict["payload"]
+                        
+                        # Calculate B-field from voltage
+                        voltage = data_dict["payload"][0]
+                        self.last_voltage = voltage
+                        self.voltage_buffer.append(voltage)
+                        self.b_field = self.calculate_b_field(voltage)
+                
+                # Process FFT data
+                elif data_dict["topic"] == "fft/data":
+                    self.fft_data = data_dict["payload"]  # List of [freq, magnitude]
+                    
+                    # Calculate peak
+                    if self.fft_data:
+                        self.peak_freq, self.peak_mag = self.calculate_peak(self.fft_data)
 
-        except Exception as e:
-            logger.error(f"Error processing data: {e}")
-        
-        # Small delay to prevent CPU overload
-        await asyncio.sleep(0.01)
+                # Update display if not in adjusting state
+                if self.current_state != State.ADJUSTING and self.current_state != State.OFF:
+                    await self.update_display_with_state()
+
+            except Exception as e:
+                logger.error(f"Error processing data: {e}")
+            
+            # Small delay to prevent CPU overload
+            await asyncio.sleep(0.01)
             
     async def run(self) -> None:
         """Main run loop"""
@@ -488,7 +489,7 @@ async def process_data(self) -> None:
         while True:
             await asyncio.sleep(10)  # Check every 10 seconds
             counter += 1
-            if counter % 6 == 0:  # Log every minute 
+            if counter % 6 == 0:  # Log every minute
                 logger.info(f"LCD controller heartbeat - State: {self.current_state}, Display: {'ON' if self.display_active else 'OFF'}, DAT: {self.data_acquisition_time}s")
                 
             # Check if we've been receiving data
