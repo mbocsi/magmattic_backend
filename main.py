@@ -113,9 +113,9 @@ if __name__ == "__main__":
     )
 
     # === Initialize ADC controller (PiPlate or Virtual ADC Only! Comment out if using ESP32) ===
-    # adc_sub_queue = asyncio.Queue()
+    adc_sub_queue = asyncio.Queue()
     # adc = ADCComponent(pub_queue=app_pub_queue, sub_queue=adc_sub_queue)
-    # adc = VirtualADCComponent(pub_queue=app_pub_queue, sub_queue=adc_sub_queue)
+    adc = VirtualADCComponent(pub_queue=app_pub_queue, sub_queue=adc_sub_queue)
 
     # === Initialize Motor Controller ===
     # motor_sub_queue = asyncio.Queue()
@@ -133,11 +133,13 @@ if __name__ == "__main__":
     )
 
     # === Initialize the app ===
-    components = [ws, calculation]  # Add all components to this array
+    components = [ws, calculation, adc]  # Add all components to this array
     app = App(*components, pub_queue=app_pub_queue)
 
     # === Add queue subscriptions ===
-    app.registerSub(["voltage/data", "calculation/command"], calculation_sub_queue)
+    app.registerSub(
+        ["voltage/data", "calculation/command", "adc/status"], calculation_sub_queue
+    )
 
     # Uncomment this if using motor component
     # app.registerSub(["motor/command"], motor_sub_queue)
@@ -146,7 +148,7 @@ if __name__ == "__main__":
     # app.registerSub(["fft/data"], lcd_sub_queue)
 
     # Only uncomment this if using PiPlate or Virtual ADC
-    # app.registerSub(["adc/command"], adc_sub_queue)
+    app.registerSub(["adc/command"], adc_sub_queue)
 
     logger.info("starting app")
     asyncio.run(app.run())

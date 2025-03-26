@@ -122,6 +122,8 @@ class CalculationComponent(AppComponent):
                             self.voltage_data.clear()
                     case "calculation/command":
                         await self.control(data)
+                    case "adc/status":
+                        self.sample_rate = data["payload"]["sample_rate"]
                     case _:
                         logger.warning(f"unknown topic received: {data['topic']}")
             except Exception as e:
