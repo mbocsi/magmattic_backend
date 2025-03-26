@@ -137,7 +137,9 @@ if __name__ == "__main__":
     app = App(*components, pub_queue=app_pub_queue)
 
     # === Add queue subscriptions ===
-    app.registerSub(["voltage/data", "calculation/command"], calculation_sub_queue)
+    app.registerSub(
+        ["voltage/data", "calculation/command", "adc/status"], calculation_sub_queue
+    )
 
     # Uncomment this if using motor component
     # app.registerSub(["motor/command"], motor_sub_queue)

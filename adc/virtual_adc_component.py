@@ -49,7 +49,7 @@ class VirtualADCComponent(BaseADCComponent):
         return noisy_signal.tolist()
 
     @classmethod
-    async def sin_stream(cls, angles, n):
+    async def sin_stream(cls, angles, n, sample_rate):
         data = []
         for _ in range(n):
             angles = (angles + (2 * np.pi * frequencies[:, [0]].T * 0.001)) % (
@@ -58,14 +58,16 @@ class VirtualADCComponent(BaseADCComponent):
 
             signal = np.sum(frequencies[:, [1]].T * np.sin(angles))
             data.append(signal)
-            await asyncio.sleep(0.001)
+            await asyncio.sleep(1 / float(sample_rate))
         return angles, VirtualADCComponent.add_noise(data, noise_level=0.2)
 
     async def stream_adc(self) -> None:
         angles = np.zeros((1, frequencies.shape[0]))
         try:
             while True:
-                angles, values = await VirtualADCComponent.sin_stream(angles, self.Nbuf)
+                angles, values = await VirtualADCComponent.sin_stream(
+                    angles, self.Nbuf, self.sample_rate
+                )
                 await self.send_voltage(values)
                 await asyncio.sleep(0)
         except asyncio.CancelledError:
