@@ -244,7 +244,7 @@ class LCDController(LCDInterface):
         """Read analog value from potentiometer using ADC"""
         try:
             # This is a placeholder - implementation will depend on ADC setup
-            # Since Marton's ADC code already exists, we would read from that
+            # Since Marton's ADC code already exists,  would read from that
             # For testing, return a simulated value
             return 341  # Middle value (corresponds to ~1s acquisition time)
         except Exception as e:
