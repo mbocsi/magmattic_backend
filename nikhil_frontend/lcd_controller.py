@@ -9,30 +9,36 @@ from lcd_interface import LCDInterface
 
 logger = logging.getLogger(__name__ + ".LCDController")
 
-# Define view modes
-VIEW_MODES = {
-    'VOLTAGE': 0,
-    'FFT': 1,
-    'MULTI_FREQ': 2,
-    'STATS': 3
-}
+# Define state constants
+class State:
+    B_FIELD = 0
+    FFT = 1
+    ADJUSTING = 2
+    OFF = 3
 
-# GPIO Button Pins (from lcd_config.py)
-BUTTON_UP = 17
-BUTTON_DOWN = 27
-BUTTON_SELECT = 22
-BUTTON_BACK = 23
-POWER_SWITCH = 24
+# GPIO Button Pin Configuration
+BUTTON_MODE = 17  # B1: Change mode button
+BUTTON_POWER = 22  # B2: Power on/off
 
-# LCD Configuration
+# Potentiometer Pins (ADC channels)
+POT_DAT = 0  # POT1: Data acquisition time potentiometer (ADC channel 0)
+POT_FIELD = 1  # POT2: Helmholtz coil adjustment (for future use)
+
+# Display Configuration
 LCD_WIDTH = 16
 LCD_HEIGHT = 2
 I2C_ADDR = 0x27
 I2C_BUS = 1
 
+# Data acquisition time constants
+MIN_DAT = 0.1  # Minimum data acquisition time (seconds)
+MAX_DAT = 100.0  # Maximum data acquisition time (seconds)
+DEFAULT_DAT = 1.0  # Default data acquisition time (seconds)
+
 class LCDController(LCDInterface):
     """
-    Improved LCD controller that shows different views of ADC data.
+    LCD controller that displays B-field and FFT data, with potentiometer control for
+    data acquisition time.
     """
 
     def __init__(self, q_data: asyncio.Queue, q_control: asyncio.Queue):
@@ -40,42 +46,31 @@ class LCDController(LCDInterface):
         self.q_data = q_data
         self.q_control = q_control
         
-        # Menu and display states
-        self.in_menu = False
-        self.current_menu_index = 0
-        self.current_view_mode = VIEW_MODES['VOLTAGE']
-        self.lcd_power = True
+        # State variables
+        self.current_state = State.B_FIELD
+        self.display_active = True
+        self.adjusting_dat = False
         
         # Data storage
         self.voltage_buffer = deque(maxlen=100)
         self.fft_data = []
         self.last_voltage = 0.0
-        self.min_voltage = 0.0
-        self.max_voltage = 0.0
-        self.avg_voltage = 0.0
+        self.b_field = 0.0  # Magnetic field in Tesla
+        self.data_acquisition_time = DEFAULT_DAT
+        self.last_pot_value = 0
         
-        # Menu options
-        self.menu_options = [
-            "1. Voltage View",
-            "2. FFT View",
-            "3. Multi-Freq View",
-            "4. Stats View"
-        ]
+        # Potentiometer adjustment time tracking
+        self.pot_last_change_time = 0
+        self.pot_stable_timeout = 1.0  # Time in seconds before applying pot changes
         
-        # Character LCD instance
+        # LCD instance
         self.lcd = None
         
-        # Custom characters for bar graph
-        self.custom_chars = [
-            bytearray([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1F]),  # 1/5 bar
-            bytearray([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1F, 0x1F]),  # 2/5 bar
-            bytearray([0x00, 0x00, 0x00, 0x00, 0x00, 0x1F, 0x1F, 0x1F]),  # 3/5 bar
-            bytearray([0x00, 0x00, 0x00, 0x00, 0x1F, 0x1F, 0x1F, 0x1F]),  # 4/5 bar
-            bytearray([0x00, 0x00, 0x00, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F]),  # 5/5 bar
-            bytearray([0x00, 0x00, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F]),  # 6/5 bar
-            bytearray([0x00, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F]),  # 7/5 bar
-            bytearray([0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F]),  # Full bar
-        ]
+        # Button states for debouncing
+        self.button_states = {}
+        
+        # Conversion factors (to be adjusted based on circuit characteristics)
+        self.voltage_to_tesla_factor = 1.0  # Convert voltage to Tesla
 
     async def initialize_display(self) -> None:
         """Initialize the LCD display and GPIO pins"""
@@ -90,10 +85,6 @@ class LCDController(LCDInterface):
                 rows=LCD_HEIGHT,
                 dotsize=8,
             )
-            
-            # Create custom characters for bar graph
-            for i, char in enumerate(self.custom_chars):
-                await asyncio.to_thread(self.lcd.create_char, i, char)
             
             logger.info("LCD initialized successfully")
             
@@ -144,19 +135,13 @@ class LCDController(LCDInterface):
             
             # Setup GPIO
             GPIO.setmode(GPIO.BCM)
-            GPIO.setup(BUTTON_UP, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-            GPIO.setup(BUTTON_DOWN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-            GPIO.setup(BUTTON_SELECT, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-            GPIO.setup(BUTTON_BACK, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-            GPIO.setup(POWER_SWITCH, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+            GPIO.setup(BUTTON_MODE, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+            GPIO.setup(BUTTON_POWER, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
             # Initialize button states (HIGH when not pressed with pull-up)
             self.button_states = { 
-                BUTTON_UP: GPIO.input(BUTTON_UP),
-                BUTTON_DOWN: GPIO.input(BUTTON_DOWN),
-                BUTTON_SELECT: GPIO.input(BUTTON_SELECT),
-                BUTTON_BACK: GPIO.input(BUTTON_BACK),
-                POWER_SWITCH: GPIO.input(POWER_SWITCH)
+                BUTTON_MODE: GPIO.input(BUTTON_MODE),
+                BUTTON_POWER: GPIO.input(BUTTON_POWER)
             }
             
             # Start button polling task
@@ -184,7 +169,7 @@ class LCDController(LCDInterface):
                 
                 button_pressed = False
                 
-                for button in [BUTTON_UP, BUTTON_DOWN, BUTTON_SELECT, BUTTON_BACK, POWER_SWITCH]:
+                for button in [BUTTON_MODE, BUTTON_POWER]:
                     # Skip if button doesn't exist in our state dict
                     if button not in self.button_states:
                         continue
@@ -209,97 +194,138 @@ class LCDController(LCDInterface):
                 logger.error(f"Error polling buttons: {e}")
                 await asyncio.sleep(1)  # Longer delay on error
 
+    async def poll_potentiometers(self) -> None:
+        """Poll potentiometer values"""
+        pot_debounce_value = 5  # Minimum change to register as intentional
+        
+        while True:
+            try:
+                # Read POT1 (Data Acquisition Time)
+                pot_value = await self.read_potentiometer(POT_DAT)
+                
+                # Check if potentiometer value has changed significantly
+                if abs(pot_value - self.last_pot_value) > pot_debounce_value:
+                    logger.debug(f"POT1 value changed: {pot_value} (was {self.last_pot_value})")
+                    self.last_pot_value = pot_value
+                    self.pot_last_change_time = time.time()
+                    
+                    # Enter adjusting state if not already in it
+                    if self.current_state != State.ADJUSTING and self.display_active:
+                        self.current_state = State.ADJUSTING
+                        await self.update_display_with_state()
+                    
+                    # Calculate new data acquisition time using logarithmic scale
+                    # Map pot value (0-1023) to data acquisition time (0.1-100s)
+                    # t = 0.1 * 10^(pot_value/341)
+                    new_dat = MIN_DAT * (10 ** (pot_value / 341.0))
+                    self.data_acquisition_time = round(new_dat, 2)
+                    
+                    # Update display in adjusting state
+                    if self.current_state == State.ADJUSTING and self.display_active:
+                        await self.display_adjusting_view()
+                
+                # Check if potentiometer has been stable for a while
+                if (self.current_state == State.ADJUSTING and 
+                    time.time() - self.pot_last_change_time > self.pot_stable_timeout):
+                    # Send new acquisition time to ADC controller
+                    await self.send_acquisition_time_update()
+                    
+                    # Return to previous state
+                    self.current_state = State.B_FIELD
+                    await self.update_display_with_state()
+                
+                await asyncio.sleep(0.05)  # Short delay between polls
+                
+            except Exception as e:
+                logger.error(f"Error polling potentiometers: {e}")
+                await asyncio.sleep(1)  # Longer delay on error
+
+    async def read_potentiometer(self, channel: int) -> int:
+        """Read analog value from potentiometer using ADC"""
+        try:
+            # This is a placeholder - implementation will depend on ADC setup
+            # Since Marton's ADC code already exists, we would read from that
+            # For testing, return a simulated value
+            return 341  # Middle value (corresponds to ~1s acquisition time)
+        except Exception as e:
+            logger.error(f"Error reading potentiometer: {e}")
+            return 0
+
+    async def send_acquisition_time_update(self) -> None:
+        """Send updated data acquisition time to ADC controller"""
+        try:
+            # Send control message to ADC component to update sampling time
+            control_msg = {
+                "topic": "adc/command",
+                "payload": {
+                    "sample_time": self.data_acquisition_time
+                }
+            }
+            await self.q_control.put(control_msg)
+            logger.info(f"Sent new acquisition time: {self.data_acquisition_time}s")
+        except Exception as e:
+            logger.error(f"Error sending acquisition time update: {e}")
+
     async def handle_button_press(self, button: int) -> None:
-        """Handle button press events"""
+        """Handle button press events based on state machine logic"""
         logger.info(f"Handling button press: {button}")
         
-        # Power button toggles backlight from anywhere
-        if button == POWER_SWITCH:
+        # Ignore adjustments while in adjusting state
+        if self.current_state == State.ADJUSTING and button == BUTTON_MODE:
+            return
+            
+        # Power button toggles display from any state
+        if button == BUTTON_POWER:
             await self.toggle_power()
             return
             
-        # Skip if LCD is powered off
-        if not self.lcd_power:
-            return
+        # Mode button changes display view when display is on
+        if button == BUTTON_MODE and self.display_active:
+            if self.current_state == State.B_FIELD:
+                self.current_state = State.FFT
+            elif self.current_state == State.FFT:
+                self.current_state = State.B_FIELD
             
-        if self.in_menu:
-            # Handle navigation in the menu
-            if button == BUTTON_UP:
-                self.current_menu_index = (self.current_menu_index - 1) % len(self.menu_options)
-                await self.display_menu()
-            elif button == BUTTON_DOWN:
-                self.current_menu_index = (self.current_menu_index + 1) % len(self.menu_options)
-                await self.display_menu()
-            elif button == BUTTON_SELECT:
-                # Set the view mode based on menu selection
-                self.current_view_mode = self.current_menu_index
-                self.in_menu = False
-                await self.update_display_with_data()
-            elif button == BUTTON_BACK:
-                # Exit menu without changing view
-                self.in_menu = False
-                await self.update_display_with_data()
-        else:
-            # When not in menu
-            if button == BUTTON_SELECT:
-                # Enter menu
-                self.in_menu = True
-                await self.display_menu()
-            elif button == BUTTON_BACK:
-                # Cycle through views
-                self.current_view_mode = (self.current_view_mode + 1) % len(VIEW_MODES)
-                await self.update_display_with_data()
+            # Update display based on new state
+            await self.update_display_with_state()
 
     async def toggle_power(self) -> None:
-        """Toggle LCD backlight on/off"""
-        self.lcd_power = not self.lcd_power
-        if self.lcd_power:
+        """Toggle LCD display power on/off"""
+        self.display_active = not self.display_active
+        
+        if self.display_active:
             await asyncio.to_thread(self.lcd.backlight)
-            await self.update_display_with_data()
+            self.current_state = State.B_FIELD  # Reset to default state
+            await self.update_display_with_state()
         else:
             await asyncio.to_thread(self.lcd.nobacklight)
+            await asyncio.to_thread(self.lcd.clear)
 
-    async def display_menu(self) -> None:
-        """Display the view selection menu"""
-        option = self.menu_options[self.current_menu_index]
-        position = f"{self.current_menu_index+1}/{len(self.menu_options)}"
-        await self.update_display(f">{option}", position)
-
-    async def update_display_with_data(self) -> None:
-        """Update display based on current view mode"""
-        if not self.lcd_power:
+    async def update_display_with_state(self) -> None:
+        """Update display based on current state"""
+        if not self.display_active:
             return
             
         try:
-            if self.current_view_mode == VIEW_MODES['VOLTAGE']:
-                await self.display_voltage_view()
-            elif self.current_view_mode == VIEW_MODES['FFT']:
+            if self.current_state == State.B_FIELD:
+                await self.display_b_field_view()
+            elif self.current_state == State.FFT:
                 await self.display_fft_view()
-            elif self.current_view_mode == VIEW_MODES['MULTI_FREQ']:
-                await self.display_multi_freq_view()
-            elif self.current_view_mode == VIEW_MODES['STATS']:
-                await self.display_stats_view()
+            elif self.current_state == State.ADJUSTING:
+                await self.display_adjusting_view()
         except Exception as e:
             logger.error(f"Error updating display: {e}")
             await self.update_display("Display Error", str(e)[:16])
 
-    async def display_voltage_view(self) -> None:
-        """Show voltage view with real-time reading and bar graph"""
-        voltage_str = f"Voltage: {self.last_voltage:.4f}V"
+    async def display_b_field_view(self) -> None:
+        """Show B-field view with magnetic field reading and acquisition time"""
+        # Format B-field in appropriate Tesla units (T, mT, μT)
+        b_field_formatted = self.format_magnetic_field(self.b_field)
         
-        # Create bar graph based on voltage
-        # Assuming voltage range of 0-5V for full scale
-        bar_length = min(int(abs(self.last_voltage) / 5.0 * 16), 16)
-        bar = ""
-        for i in range(bar_length):
-            if i < 8:
-                bar += chr(7)  # Use the full-block character
-            else:
-                bar += "="  # Use = for the rest
+        # Format data acquisition time
+        time_str = self.format_time(self.data_acquisition_time)
         
-        bar = bar.ljust(16)  # Fill with spaces to 16 chars
-        
-        await self.update_display(voltage_str, bar)
+        await self.update_display(f"B: {b_field_formatted}", f"Acq Time: {time_str}")
 
     async def display_fft_view(self) -> None:
         """Show FFT view with peak frequency and magnitude"""
@@ -315,51 +341,14 @@ class LCDController(LCDInterface):
         
         await self.update_display(freq_str, mag_str)
 
-    async def display_multi_freq_view(self) -> None:
-        """Show multiple frequency peaks"""
-        if not self.fft_data or len(self.fft_data) < 2:
-            await self.update_display("Multi-Freq View", "Insufficient data")
-            return
-            
-        # Sort FFT data by magnitude and get top 2 peaks
-        sorted_fft = sorted(self.fft_data, key=lambda x: x[1], reverse=True)
-        
-        # Skip DC component (0 Hz) if present
-        peaks = []
-        for freq, mag in sorted_fft:
-            if freq > 0.5:  # Skip near-DC
-                peaks.append((freq, mag))
-                if len(peaks) >= 2:
-                    break
-        
-        if len(peaks) < 2:
-            # Not enough peaks found
-            await self.update_display("Multi-Freq View", "Need more peaks")
-            return
-            
-        f1, m1 = peaks[0]
-        f2, m2 = peaks[1]
-        
-        freq_str = f"F1:{f1:.1f} F2:{f2:.1f}"
-        mag_str = f"M1:{m1:.4f} M2:{m2:.4f}"
-        
-        await self.update_display(freq_str, mag_str)
-
-    async def display_stats_view(self) -> None:
-        """Show voltage statistics"""
-        if not self.voltage_buffer:
-            await self.update_display("Statistics", "No data yet")
-            return
-            
-        # Calculate statistics
-        stats_str = "Min/Max/Avg"
-        values_str = f"{self.min_voltage:.2f}/{self.max_voltage:.2f}/{self.avg_voltage:.2f}"
-        
-        await self.update_display(stats_str, values_str)
+    async def display_adjusting_view(self) -> None:
+        """Show adjusting view while potentiometer is being turned"""
+        time_str = self.format_time(self.data_acquisition_time)
+        await self.update_display("ADJUSTING", f"Acq Time: {time_str}")
 
     async def update_display(self, line1: str, line2: str) -> None:
         """Update both lines of the LCD display"""
-        if not self.lcd_power or not self.lcd:
+        if not self.display_active or not self.lcd:
             return
             
         try:
@@ -378,6 +367,23 @@ class LCDController(LCDInterface):
         # Find the point with maximum magnitude
         return max(fft_data, key=lambda x: x[1])
 
+    def format_magnetic_field(self, value: float) -> str:
+        """Format magnetic field value with appropriate unit (T, mT, μT)"""
+        abs_value = abs(value)
+        if abs_value >= 1:
+            return f"{value:.4f} T"
+        elif abs_value >= 0.001:
+            return f"{value*1000:.2f} mT"
+        else:
+            return f"{value*1000000:.2f} uT"
+
+    def format_time(self, seconds: float) -> str:
+        """Format time value with appropriate unit (s, ms)"""
+        if seconds >= 1:
+            return f"{seconds:.1f}s"
+        else:
+            return f"{seconds*1000:.0f}ms"
+            
     async def process_data(self) -> None:
         """Process incoming data from queue"""
         while True:
@@ -393,57 +399,54 @@ class LCDController(LCDInterface):
                         continue
                 else:
                     data_dict = data
-
+                
                 # Process voltage data
-                if data_dict["type"] == "voltage":
-                    if isinstance(data_dict["val"], list) and len(data_dict["val"]) > 0:
-                        voltage = data_dict["val"][0]
+                if data_dict["topic"] == "voltage/data":
+                    if isinstance(data_dict["payload"], list) and len(data_dict["payload"]) > 0:
+                        voltage = sum(data_dict["payload"]) / len(data_dict["payload"])  # Average voltage
                         self.last_voltage = voltage
                         self.voltage_buffer.append(voltage)
                         
-                        # Update statistics
-                        if self.voltage_buffer:
-                            self.min_voltage = min(self.voltage_buffer)
-                            self.max_voltage = max(self.voltage_buffer)
-                            self.avg_voltage = sum(self.voltage_buffer) / len(self.voltage_buffer)
+                        # Calculate B field from voltage
+                        self.b_field = voltage * self.voltage_to_tesla_factor
                 
                 # Process FFT data
-                elif data_dict["type"] == "fft":
-                    self.fft_data = data_dict["val"]  # List of [freq, magnitude]
+                elif data_dict["topic"] == "fft/data":
+                    self.fft_data = data_dict["payload"]  # List of [freq, magnitude]
 
-                # Update display if not in menu
-                if not self.in_menu:
-                    await self.update_display_with_data()
+                # Update display if not in adjusting state and display is active
+                if self.current_state != State.ADJUSTING and self.display_active:
+                    await self.update_display_with_state()
 
             except Exception as e:
                 logger.error(f"Error processing data: {e}")
             
             # Small delay to prevent CPU overload
-            await asyncio.sleep(0.1)
-
+            await asyncio.sleep(0.05)
+            
     async def run(self) -> None:
         """Main run loop"""
         try:
+            # Initialize display
             await self.initialize_display()
-            await asyncio.sleep(1)  # Show initialize message briefly
             
-            # Start processing data
+            # Start tasks
             data_task = asyncio.create_task(self.process_data())
+            pot_task = asyncio.create_task(self.poll_potentiometers())
             
-            # Initial display
+            # Initial display update
             await self.update_display("Magnetometer", "Ready")
             await asyncio.sleep(1)
-            await self.update_display_with_data()
+            await self.update_display_with_state()
             
-            # Keep the main loop running
-            while True:
-                await asyncio.sleep(1)
-
+            # Keep main loop running
+            await asyncio.gather(data_task, pot_task)
+            
         except Exception as e:
             logger.error(f"LCD controller error: {e}")
         finally:
             await self.cleanup()
-
+            
     async def cleanup(self) -> None:
         """Cleanup GPIO and LCD resources"""
         try:
