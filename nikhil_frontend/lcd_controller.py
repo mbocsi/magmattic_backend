@@ -488,7 +488,7 @@ async def process_data(self) -> None:
         while True:
             await asyncio.sleep(10)  # Check every 10 seconds
             counter += 1
-            if counter % 6 == 0:  # Log every minute
+            if counter % 6 == 0:  # Log every minute 
                 logger.info(f"LCD controller heartbeat - State: {self.current_state}, Display: {'ON' if self.display_active else 'OFF'}, DAT: {self.data_acquisition_time}s")
                 
             # Check if we've been receiving data
