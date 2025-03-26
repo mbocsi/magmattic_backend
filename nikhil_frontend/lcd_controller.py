@@ -270,8 +270,14 @@ class LCDController(LCDInterface):
         """Handle button press events based on state machine logic"""
         logger.info(f"Handling button press: {button}")
         
+        # Prevent actions if both buttons are being pressed simultaneously
+        if all(GPIO.input(btn) == 0 for btn in [BUTTON_MODE, BUTTON_POWER] if btn in self.button_states):
+            logger.warning("Multiple buttons pressed simultaneously - ignoring")
+            return
+        
         # Ignore adjustments while in adjusting state
         if self.current_state == State.ADJUSTING and button == BUTTON_MODE:
+            logger.info("Ignoring mode button while in ADJUSTING state")
             return
             
         # Power button toggles display from any state
@@ -283,8 +289,10 @@ class LCDController(LCDInterface):
         if button == BUTTON_MODE and self.display_active:
             if self.current_state == State.B_FIELD:
                 self.current_state = State.FFT
+                logger.info("Changed view to FFT mode")
             elif self.current_state == State.FFT:
                 self.current_state = State.B_FIELD
+                logger.info("Changed view to B-field mode")
             
             # Update display based on new state
             await self.update_display_with_state()
@@ -401,18 +409,38 @@ class LCDController(LCDInterface):
                     data_dict = data
                 
                 # Process voltage data
-                if data_dict["topic"] == "voltage/data":
-                    if isinstance(data_dict["payload"], list) and len(data_dict["payload"]) > 0:
-                        voltage = sum(data_dict["payload"]) / len(data_dict["payload"])  # Average voltage
-                        self.last_voltage = voltage
-                        self.voltage_buffer.append(voltage)
-                        
-                        # Calculate B field from voltage
-                        self.b_field = voltage * self.voltage_to_tesla_factor
+                if data_dict.get("topic") == "voltage/data":
+                    payload = data_dict.get("payload", [])
+                    if isinstance(payload, list) and len(payload) > 0:
+                        try:
+                            # Ensure we have numeric values
+                            numeric_values = [float(v) for v in payload if isinstance(v, (int, float)) or (isinstance(v, str) and v.replace('.', '', 1).isdigit())]
+                            if numeric_values:
+                                voltage = sum(numeric_values) / len(numeric_values)  # Average voltage
+                                self.last_voltage = voltage
+                                self.voltage_buffer.append(voltage)
+                                
+                                # Calculate B field from voltage
+                                self.b_field = voltage * self.voltage_to_tesla_factor
+                        except Exception as e:
+                            logger.error(f"Error processing voltage data: {e}")
                 
                 # Process FFT data
-                elif data_dict["topic"] == "fft/data":
-                    self.fft_data = data_dict["payload"]  # List of [freq, magnitude]
+                elif data_dict.get("topic") == "fft/data":
+                    payload = data_dict.get("payload", [])
+                    # Make sure FFT data is valid
+                    if isinstance(payload, list):
+                        try:
+                            # Validate each entry is a [freq, mag] pair
+                            valid_entries = [entry for entry in payload if (
+                                isinstance(entry, list) and 
+                                len(entry) == 2 and 
+                                all(isinstance(v, (int, float)) or (isinstance(v, str) and v.replace('.', '', 1).isdigit()) for v in entry)
+                            )]
+                            if valid_entries:
+                                self.fft_data = [[float(freq), float(mag)] for freq, mag in valid_entries]
+                        except Exception as e:
+                            logger.error(f"Error processing FFT data: {e}")
 
                 # Update display if not in adjusting state and display is active
                 if self.current_state != State.ADJUSTING and self.display_active:
@@ -439,13 +467,37 @@ class LCDController(LCDInterface):
             await asyncio.sleep(1)
             await self.update_display_with_state()
             
-            # Keep main loop running
-            await asyncio.gather(data_task, pot_task)
+            # Create a heartbeat task to ensure system is responsive
+            heartbeat_task = asyncio.create_task(self._heartbeat())
             
+            # Keep main loop running
+            await asyncio.gather(data_task, pot_task, heartbeat_task)
+            
+        except asyncio.CancelledError:
+            logger.info("LCD controller tasks cancelled")
         except Exception as e:
             logger.error(f"LCD controller error: {e}")
         finally:
             await self.cleanup()
+            
+    async def _heartbeat(self) -> None:
+        """Periodic heartbeat to check system health"""
+        counter = 0
+        while True:
+            await asyncio.sleep(10)  # Check every 10 seconds
+            counter += 1
+            if counter % 6 == 0:  # Log every minute
+                logger.info(f"LCD controller heartbeat - State: {self.current_state}, Display: {'ON' if self.display_active else 'OFF'}, DAT: {self.data_acquisition_time}s")
+                
+            # Check if we've been receiving data
+            if counter % 30 == 0:  # Every 5 minutes
+                if not self.voltage_buffer and not self.fft_data:
+                    logger.warning("No data received for extended period!")
+                    # Flash display to indicate issue if display is on
+                    if self.display_active:
+                        await self.update_display("WARNING", "No data received")
+                        await asyncio.sleep(1)
+                        await self.update_display_with_state()
             
     async def cleanup(self) -> None:
         """Cleanup GPIO and LCD resources"""
