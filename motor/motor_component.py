@@ -16,13 +16,13 @@ class MotorComponent(BaseMotorComponent):
         self.GPIO = GPIO
 
         GPIO.setmode(GPIO.BCM)
-        GPIO.setup(PUL, GPIO.OUT)
+        GPIO.setup(STEP, GPIO.OUT)
         GPIO.setup(DIR, GPIO.OUT, initial=np.sign(self.freq))
         GPIO.setup(ENA, GPIO.OUT, initial=GPIO.HIGH)
 
     async def stream_data(self) -> None:
         try:
-            pulse_pin = self.GPIO.PWM(PUL, abs(self.freq * STEPS_PER_REV))
+            pulse_pin = self.GPIO.PWM(STEP, abs(self.freq * STEPS_PER_REV))
 
             if self.freq == 0:
                 raise ValueError("freq is 0")

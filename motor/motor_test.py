@@ -7,7 +7,7 @@ import numpy as np
 
 # Setup GPIO
 GPIO.setmode(GPIO.BCM)  # Maybe board
-GPIO.setup(PUL, GPIO.OUT)
+GPIO.setup(STEP, GPIO.OUT)
 GPIO.setup(DIR, GPIO.OUT)
 GPIO.setup(ENA, GPIO.OUT)
 
@@ -15,9 +15,9 @@ GPIO.output(ENA, GPIO.HIGH)  # Disable at start
 
 
 def rotate(duration, omega):
-    pulse_pin = GPIO.PWM(PUL, abs(omega * STEPS_PER_REV))
+    pulse_pin = GPIO.PWM(STEP, abs(omega * STEPS_PER_REV))
     print(int(np.sign(omega)))
-    GPIO.output(DIR, int(np.sign(omega)))
+    GPIO.output(DIR, bool(np.sign(omega)))
     GPIO.output(ENA, GPIO.LOW)
     pulse_pin.start(DUTY)
 
