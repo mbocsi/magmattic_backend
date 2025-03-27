@@ -1,5 +1,5 @@
 import RPi.GPIO as GPIO  # type: ignore
-from .motor_config import *
+from motor_config import *
 import time
 import numpy as np
 
@@ -16,7 +16,8 @@ GPIO.output(ENA, GPIO.HIGH)  # Disable at start
 
 def rotate(duration, omega):
     pulse_pin = GPIO.PWM(PUL, abs(omega * STEPS_PER_REV))
-    GPIO.output(DIR, np.sign(omega))
+    print(int(np.sign(omega)))
+    GPIO.output(DIR, int(np.sign(omega)))
     GPIO.output(ENA, GPIO.LOW)
     pulse_pin.start(DUTY)
 
