@@ -52,9 +52,9 @@ class VirtualADCComponent(BaseADCComponent):
     async def sin_stream(cls, angles, n, sample_rate):
         data = []
         for _ in range(n):
-            angles = (angles + (2 * np.pi * frequencies[:, [0]].T * 0.001)) % (
-                2 * np.pi
-            )
+            angles = (
+                angles + (2 * np.pi * frequencies[:, [0]].T * (1 / float(sample_rate)))
+            ) % (2 * np.pi)
 
             signal = np.sum(frequencies[:, [1]].T * np.sin(angles))
             data.append(signal)

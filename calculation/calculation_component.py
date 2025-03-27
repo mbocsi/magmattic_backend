@@ -45,7 +45,7 @@ class CalculationComponent(AppComponent):
 
         self.coil_props = parse_coil_props(coil_props)
 
-    async def calc_fft(self, data, T) -> np.ndarray:
+    async def calc_fft(self, data, T) -> tuple[np.ndarray, np.ndarray]:
         logger.debug(f"sending fft to queue: {data} {T}")
 
         # Window data
@@ -53,22 +53,28 @@ class CalculationComponent(AppComponent):
         windowed_data = np.array(data) * window.func(self.Nsig) / window.coherent_gain
 
         # Perform fft
-        FFT = np.abs(np.fft.rfft(windowed_data, n=self.Ntot)) / self.Nsig
-        V1 = FFT
-        V1[1:-1] = 2 * V1[1:-1]
+        fft = np.fft.rfft(windowed_data, n=self.Ntot) / self.Nsig
+
+        # Obtain magnitude and phase
+        magnitude = np.abs(fft)
+        phase = np.angle(fft)
+
+        magnitude[1:-1] = 2 * magnitude[1:-1]
 
         freq = np.fft.rfftfreq(self.Ntot, d=T / self.Nsig)
 
         freq = freq.reshape((len(freq), 1))
-        V1 = V1.reshape((len(V1), 1))
+        magnitude = magnitude.reshape((len(magnitude), 1))
+        phase = phase.reshape((len(phase), 1))
 
-        payload = np.hstack((freq, V1))
+        magnitude_data = np.hstack((freq, magnitude))
+        phase_data = np.hstack((freq, phase))
 
-        return payload
+        return magnitude_data, phase_data
 
     async def calc_vampl(
-        self, fft: np.ndarray, freq_calc_range: float = 3
-    ) -> tuple[float, float]:
+        self, fft: np.ndarray, phase: np.ndarray, freq_calc_range: float = 3
+    ) -> tuple[float, float, float]:
         freq_res = ((fft[[-1], [0]] - fft[[0], [0]]) / fft.shape[0])[0]
 
         idx_range = freq_calc_range // freq_res
@@ -84,10 +90,19 @@ class CalculationComponent(AppComponent):
 
         estimated_power = raw_power / windows[self.window].enbw
         estimated_amplitude = math.sqrt(estimated_power)
-        return estimated_amplitude, filtered_fft[max_idx, 0] * 2 * math.pi
 
-    async def calc_bfield(self, volts: float, omega: float) -> float:
-        return volts / (self.coil_props["windings"] * self.coil_props["area"] * omega)
+        estimated_phase = phase[max_idx, 1]
+
+        return (
+            estimated_amplitude,
+            estimated_phase,
+            filtered_fft[max_idx, 0] * 2 * math.pi,
+        )
+
+    async def calc_bfield(self, volts: float, omega: float, theta: float) -> np.ndarray:
+        vector = np.array([np.cos(theta), np.sin(theta)])
+        mag = (volts / (self.coil_props["windings"] * self.coil_props["area"] * omega),)
+        return vector * mag
 
     async def recv_control(self) -> None:
         while True:
@@ -99,23 +114,41 @@ class CalculationComponent(AppComponent):
                         if len(self.voltage_data) < self.Nsig:
                             continue
                         T = self.Nsig / self.sample_rate
-                        fft = await self.calc_fft(self.voltage_data, T)
+                        magnitude, phase = await self.calc_fft(self.voltage_data, T)
                         self.pub_queue.put_nowait(
                             {
-                                "topic": "fft/data",
-                                "payload": fft.tolist(),
-                                "metadata": {"window": self.window},
+                                "topic": "fft_mags/data",
+                                "payload": magnitude.tolist(),
                             }
                         )
-                        voltage_amplitude, omega = await self.calc_vampl(fft)
+                        phase_deg = phase
+                        phase_deg[:, 1] *= 180 / np.pi
+                        self.pub_queue.put_nowait(
+                            {
+                                "topic": "fft_phases/data",
+                                "payload": phase_deg.tolist(),
+                            }
+                        )
+                        voltage_amplitude, theta, omega = await self.calc_vampl(
+                            magnitude, phase
+                        )
+                        self.pub_queue.put_nowait(
+                            {
+                                "topic": "signal/data",
+                                "payload": {
+                                    "amplitude": voltage_amplitude,
+                                    "phase": theta * 180 / (np.pi),
+                                },
+                            }
+                        )
                         # logger.info(f"{voltage_amplitude=}")
                         # logger.info(f"{omega=}")
-                        bfield = await self.calc_bfield(voltage_amplitude, omega)
+                        bfield = await self.calc_bfield(voltage_amplitude, omega, theta)
                         # logger.info(f"{bfield=}")
                         self.pub_queue.put_nowait(
                             {
                                 "topic": "bfield/data",
-                                "payload": bfield,
+                                "payload": bfield.tolist(),
                             }
                         )
                         if not self.rolling_fft:
