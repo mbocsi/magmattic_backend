@@ -4,6 +4,7 @@ import asyncio
 import logging
 import numpy as np
 import math
+import time
 from .windows import windows
 from type_defs import Window, CalculationStatus
 
@@ -44,8 +45,9 @@ class CalculationComponent(AppComponent):
         self.voltage_data: deque[float] = deque(maxlen=Nsig)
 
         self.coil_props = parse_coil_props(coil_props)
+        self.motor_theta = 0
 
-    async def calc_fft(self, data, T) -> tuple[np.ndarray, np.ndarray]:
+    def calc_fft(self, data, T) -> tuple[np.ndarray, np.ndarray]:
         logger.debug(f"sending fft to queue: {data} {T}")
 
         # Window data
@@ -72,7 +74,7 @@ class CalculationComponent(AppComponent):
 
         return magnitude_data, phase_data
 
-    async def calc_vampl(
+    def calc_vampl(
         self, fft: np.ndarray, phase: np.ndarray, freq_calc_range: float = 3
     ) -> tuple[float, float, float]:
         freq_res = ((fft[[-1], [0]] - fft[[0], [0]]) / fft.shape[0])[0]
@@ -101,71 +103,83 @@ class CalculationComponent(AppComponent):
             filtered_fft[max_idx, 0] * 2 * math.pi,
         )
 
-    async def calc_bfield(self, volts: float, omega: float, theta: float) -> np.ndarray:
+    def calc_bfield(self, volts: float, omega: float, theta: float) -> np.ndarray:
         vector = np.array([np.cos(theta), np.sin(theta)])
         mag = (volts / (self.coil_props["windings"] * self.coil_props["area"] * omega),)
         return vector * mag
 
+    def process_voltage_data(self, data, loop):
+        # starTime = time.perf_counter()
+        self.voltage_data.extend(data["payload"])
+        if len(self.voltage_data) < self.Nsig:
+            return
+
+        T = self.Nsig / self.sample_rate
+
+        magnitude, phase = self.calc_fft(self.voltage_data, T)
+        voltage_amplitude, theta, omega = self.calc_vampl(magnitude, phase)
+        bfield = self.calc_bfield(voltage_amplitude, omega, theta)
+
+        # Use run_coroutine_threadsafe() to ensure safe queue insertion
+        loop.call_soon_threadsafe(
+            self.pub_queue.put_nowait,
+            {"topic": "fft_mags/data", "payload": magnitude.tolist()},
+        )
+        loop.call_soon_threadsafe(
+            self.pub_queue.put_nowait,
+            {
+                "topic": "fft_phases/data",
+                "payload": np.column_stack(
+                    (phase[:, 0], phase[:, 1] * 180 / np.pi)
+                ).tolist(),
+            },
+        )
+        loop.call_soon_threadsafe(
+            self.pub_queue.put_nowait,
+            {
+                "topic": "signal/data",
+                "payload": {
+                    "amplitude": voltage_amplitude,
+                    "theta": theta,
+                    "omega": omega,
+                },
+            },
+        )
+        loop.call_soon_threadsafe(
+            self.pub_queue.put_nowait,
+            {"topic": "bfield/data", "payload": bfield.tolist()},
+        )
+
+        if not self.rolling_fft:
+            self.voltage_data.clear()
+        # endTime = time.perf_counter()
+        # logger.info(f"process_voltage_data perf: {endTime - starTime}")
+
     async def recv_control(self) -> None:
+        loop = asyncio.get_running_loop()
         while True:
             try:
                 data = await self.sub_queue.get()
+                # startTime = time.perf_counter()
                 match data["topic"]:
                     case "voltage/data":
-                        self.voltage_data.extend(data["payload"])
-                        if len(self.voltage_data) < self.Nsig:
-                            continue
-                        T = self.Nsig / self.sample_rate
-                        magnitude, phase = await self.calc_fft(self.voltage_data, T)
-                        self.pub_queue.put_nowait(
-                            {
-                                "topic": "fft_mags/data",
-                                "payload": magnitude.tolist(),
-                            }
+                        asyncio.create_task(
+                            asyncio.to_thread(self.process_voltage_data, data, loop)
                         )
-                        phase_deg = np.copy(phase)
-                        phase_deg[:, 1] *= 180 / np.pi
-                        self.pub_queue.put_nowait(
-                            {
-                                "topic": "fft_phases/data",
-                                "payload": phase_deg.tolist(),
-                            }
-                        )
-                        voltage_amplitude, theta, omega = await self.calc_vampl(
-                            magnitude, phase
-                        )
-                        self.pub_queue.put_nowait(
-                            {
-                                "topic": "signal/data",
-                                "payload": {
-                                    "amplitude": voltage_amplitude,
-                                    "theta": theta,
-                                    "omega": omega,
-                                },
-                            }
-                        )
-                        # logger.info(f"{voltage_amplitude=}")
-                        # logger.info(f"{omega=}")
-                        bfield = await self.calc_bfield(voltage_amplitude, omega, theta)
-                        # logger.info(f"{bfield=}")
-                        self.pub_queue.put_nowait(
-                            {
-                                "topic": "bfield/data",
-                                "payload": bfield.tolist(),
-                            }
-                        )
-                        if not self.rolling_fft:
-                            self.voltage_data.clear()
                     case "calculation/command":
-                        await self.control(data)
+                        asyncio.create_task(asyncio.to_thread(self.control, data, loop))
                     case "adc/status":
                         self.sample_rate = data["payload"]["sample_rate"]
+                    case "motor/data":
+                        self.motor_theta = data["payload"]["theta"]
                     case _:
                         logger.warning(f"unknown topic received: {data['topic']}")
+                # endTime = time.perf_counter()
+                # logger.info(endTime - startTime)
             except Exception as e:
                 logger.error(f"An unexpected exception occured in recv_control: {e}")
 
-    async def control(self, control):
+    def control(self, control, loop):
         original_values = {}
         try:
             for var, value in control["payload"].items():
@@ -178,8 +192,9 @@ class CalculationComponent(AppComponent):
                 if var == "Nsig":
                     self.voltage_data = deque(maxlen=value)
 
-                self.pub_queue.put_nowait(
-                    {"topic": "calculation/status", "payload": self.getStatus()}
+                loop.call_soon_threadsafe(
+                    self.pub_queue.put_nowait,
+                    {"topic": "calculation/status", "payload": self.getStatus()},
                 )
         except AttributeError:
             for var, value in original_values.items():

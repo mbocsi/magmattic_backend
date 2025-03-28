@@ -2,6 +2,8 @@ from . import BaseADCComponent
 import asyncio
 import numpy as np
 import logging
+import time
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -50,15 +52,17 @@ class VirtualADCComponent(BaseADCComponent):
 
     @classmethod
     async def sin_stream(cls, angles, n, sample_rate):
+        delay = 1 / float(sample_rate)
         data = []
         for _ in range(n):
+            startTime = time.perf_counter()
             angles = (
                 angles + (2 * np.pi * frequencies[:, [0]].T * (1 / float(sample_rate)))
             ) % (2 * np.pi)
 
             signal = np.sum(frequencies[:, [1]].T * np.sin(angles))
             data.append(signal)
-            await asyncio.sleep(1 / float(sample_rate))
+            await asyncio.sleep(max(0, delay - (time.perf_counter() - startTime)))
         return angles, VirtualADCComponent.add_noise(data, noise_level=0.2)
 
     async def stream_adc(self) -> None:
@@ -68,7 +72,7 @@ class VirtualADCComponent(BaseADCComponent):
                 angles, values = await VirtualADCComponent.sin_stream(
                     angles, self.Nbuf, self.sample_rate
                 )
-                await self.send_voltage(values)
+                self.send_voltage(values)
                 await asyncio.sleep(0)
         except asyncio.CancelledError:
             logger.debug("stream_adc() cancelled")

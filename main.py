@@ -11,6 +11,7 @@ from lcd import LCDComponent, VirtualLCDComponent
 from motor import MotorComponent, VirtualMotorComponent
 from ws import WebSocketComponent
 from type_defs import ADCStatus, CalculationStatus, Message
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ class App:
     ) -> None:
         self.deps = deps
         self.pub_queue = pub_queue
-        self.subs = defaultdict(lambda: [])
+        self.subs: dict[str, list[asyncio.Queue]] = defaultdict(lambda: [])
         self.adc_status: ADCStatus | None = None
         self.calculation_status: CalculationStatus | None = None
 
@@ -77,15 +78,15 @@ class App:
                         check_type(data["payload"], ADCStatus)
                         self.adc_status = data["payload"]
                         for queue in self.subs.get(data["topic"], []):
-                            await queue.put(data)
+                            queue.put_nowait(data)
                     case "calculation/status":
                         check_type(data["payload"], CalculationStatus)
                         self.calculation_status = data["payload"]
                         for queue in self.subs.get(data["topic"], []):
-                            await queue.put(data)
+                            queue.put_nowait(data)
                     case _:
                         for queue in self.subs.get(data["topic"], []):
-                            await queue.put(data)
+                            queue.put_nowait(data)
 
             except TypeCheckError as e:
                 logger.warning(f"Invalid message format: {data} -> {e}")
@@ -113,14 +114,16 @@ if __name__ == "__main__":
     )
 
     # === Initialize ADC controller (PiPlate or Virtual ADC Only! Comment out if using ESP32) ===
-    adc_sub_queue = asyncio.Queue()
+    # adc_sub_queue = asyncio.Queue()
     # adc = ADCComponent(pub_queue=app_pub_queue, sub_queue=adc_sub_queue)
-    adc = VirtualADCComponent(pub_queue=app_pub_queue, sub_queue=adc_sub_queue)
+    # adc = VirtualADCComponent(pub_queue=app_pub_queue, sub_queue=adc_sub_queue)
 
     # === Initialize Motor Controller ===
     # motor_sub_queue = asyncio.Queue()
     # motor = MotorComponent(data_queue, motor_control_queue)
-    # motor = VirtualMotorComponent(pub_queue=app_pub_queue, sub_queue=motor_sub_queue)
+    # motor = VirtualMotorComponent(
+    #     pub_queue=app_pub_queue, sub_queue=motor_sub_queue, init_speed=5
+    # )
 
     # === Initialize LCD Component ===
     # lcd_sub_queue = asyncio.Queue()
@@ -133,12 +136,13 @@ if __name__ == "__main__":
     )
 
     # === Initialize the app ===
-    components = [ws, calculation, adc]  # Add all components to this array
+    components = [ws, calculation]  # Add all components to this array
     app = App(*components, pub_queue=app_pub_queue)
 
     # === Add queue subscriptions ===
     app.registerSub(
-        ["voltage/data", "calculation/command", "adc/status"], calculation_sub_queue
+        ["voltage/data", "calculation/command", "adc/status", "motor/data"],
+        calculation_sub_queue,
     )
 
     # Uncomment this if using motor component
@@ -148,7 +152,7 @@ if __name__ == "__main__":
     # app.registerSub(["fft/data"], lcd_sub_queue)
 
     # Only uncomment this if using PiPlate or Virtual ADC
-    app.registerSub(["adc/command"], adc_sub_queue)
+    # app.registerSub(["adc/command"], adc_sub_queue)
 
     logger.info("starting app")
     asyncio.run(app.run())
