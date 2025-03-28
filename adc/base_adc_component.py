@@ -14,7 +14,7 @@ class BaseADCComponent(AppComponent):
         sub_queue: asyncio.Queue,
         addr: int = 0,
         pin: str = "D0",
-        sample_rate: int = 1000,
+        sample_rate: int = 1200,
         Nbuf: int = 32,
     ):
         """
@@ -39,7 +39,7 @@ class BaseADCComponent(AppComponent):
         self.rolling_fft = True
         self.window = "rectangular"
 
-    async def send_voltage(self, buf: list[float]) -> None:
+    def send_voltage(self, buf: list[float]) -> None:
         """
         Sends a list of voltage readings to the WebSocket server.
 
@@ -49,7 +49,7 @@ class BaseADCComponent(AppComponent):
 
         logger.debug(f"sending voltage to queue: {buf}")
 
-        await self.pub_queue.put({"topic": "voltage/data", "payload": buf})
+        self.pub_queue.put_nowait({"topic": "voltage/data", "payload": buf})
 
     async def recv_control(self) -> None:
         while True:

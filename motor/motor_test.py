@@ -1,43 +1,34 @@
 import RPi.GPIO as GPIO  # type: ignore
-from .motor_config import *
+from motor_config import *
 import time
+import numpy as np
 
-# Test script for DM542s motor controller, thank you Gemini
-
-# Motor control parameters
-speed = 0.25  # hz
-step_delay = 1 / (2 * STEPS_PER_REV * speed)
+# Test script for motor controller (mine now, sorry not sorry gemini)
 
 # Setup GPIO
 GPIO.setmode(GPIO.BCM)  # Maybe board
-GPIO.setup(PUL, GPIO.OUT)
+GPIO.setup(STEP, GPIO.OUT)
 GPIO.setup(DIR, GPIO.OUT)
 GPIO.setup(ENA, GPIO.OUT)
 
-# Enable driver
 GPIO.output(ENA, GPIO.HIGH)  # Disable at start
 
 
-def rotate_steps(steps, direction):
-    GPIO.output(DIR, direction)
-    GPIO.output(ENA, GPIO.LOW)  # Enable driver
-    for _ in range(steps):
-        GPIO.output(PUL, GPIO.HIGH)
-        time.sleep(step_delay)
-        GPIO.output(PUL, GPIO.LOW)
-        time.sleep(step_delay)
+def rotate(duration, omega):
+    pulse_pin = GPIO.PWM(STEP, abs(omega * STEPS_PER_REV))
+    print(int(np.sign(omega)))
+    GPIO.output(DIR, bool(np.sign(omega)))
+    GPIO.output(ENA, GPIO.LOW)
+    pulse_pin.start(DUTY)
+
+    time.sleep(duration)
+    pulse_pin.stop()
     GPIO.output(ENA, GPIO.HIGH)  # Disable after rotation
 
 
 try:
-    # Rotate clockwise 1 revolution
-    rotate_steps(STEPS_PER_REV, 1)
-    time.sleep(1)
-
-    # Rotate counterclockwise 0.5 revolution
-    rotate_steps(STEPS_PER_REV // 2, 0)
-    time.sleep(1)
-
+    rotate(1, 0.25)
+    rotate(1, -0.25)
 except KeyboardInterrupt:
     GPIO.cleanup()
 

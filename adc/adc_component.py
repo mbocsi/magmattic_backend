@@ -77,7 +77,7 @@ class ADCComponent(BaseADCComponent):
             while True:
                 buffer = await self.ADC.getStreamSync(self.addr)
                 logger.debug(f"ADC buffer readings: {buffer}")
-                await self.send_voltage(buffer)
+                self.send_voltage(buffer)
                 await asyncio.sleep(0)  # Guarantee resource release to event runtime
         except asyncio.CancelledError:
             logger.debug("stream_adc() was cancelled")

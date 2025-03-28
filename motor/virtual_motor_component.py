@@ -11,14 +11,14 @@ class VirtualMotorComponent(BaseMotorComponent):
     async def stream_data(self) -> None:
         logger.debug("stream_data() was started")
         try:
-            if self.omega == 0:
-                raise ValueError("Omega is 0")
-            delay = 1 / (STEPS_PER_REV * abs(self.omega))
-            delta_theta = np.sign(self.omega) * (np.pi * 2) / STEPS_PER_REV
+            if self.freq == 0:
+                raise ValueError("freq is 0")
+            delay = 1 / (STEPS_PER_REV * abs(self.freq))
+            delta_theta = np.sign(self.freq) * (np.pi * 2) / STEPS_PER_REV
             # TODO: Convert this into a scheduled routine
             while True:
                 self.theta = (self.theta + delta_theta) % (np.pi * 2)
-                await self.send_data(self.theta, self.omega)
+                await self.send_data(self.theta, self.freq)
                 await asyncio.sleep(delay)
         except asyncio.CancelledError:
             logger.debug("stream_data() was cancelled")
