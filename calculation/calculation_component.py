@@ -78,8 +78,10 @@ class CalculationComponent(AppComponent):
         freq_res = ((fft[[-1], [0]] - fft[[0], [0]]) / fft.shape[0])[0]
 
         idx_range = freq_calc_range // freq_res
-        filtered_fft = fft[(fft[:, 0] >= 5)]
+        filtered_fft = fft[(fft[:, 0] >= 1)]
+        filtered_phase = phase[(phase[:, 0] >= 1)]
         filtered_fft = filtered_fft[filtered_fft[:, 0] <= 30]
+        filtered_phase = filtered_phase[filtered_phase[:, 0] <= 30]
 
         max_idx = np.argmax(filtered_fft, axis=0)[1]
 
@@ -91,7 +93,7 @@ class CalculationComponent(AppComponent):
         estimated_power = raw_power / windows[self.window].enbw
         estimated_amplitude = math.sqrt(estimated_power)
 
-        estimated_phase = phase[max_idx, 1]
+        estimated_phase = filtered_phase[max_idx, 1]
 
         return (
             estimated_amplitude,
@@ -121,7 +123,7 @@ class CalculationComponent(AppComponent):
                                 "payload": magnitude.tolist(),
                             }
                         )
-                        phase_deg = phase
+                        phase_deg = np.copy(phase)
                         phase_deg[:, 1] *= 180 / np.pi
                         self.pub_queue.put_nowait(
                             {
@@ -137,7 +139,8 @@ class CalculationComponent(AppComponent):
                                 "topic": "signal/data",
                                 "payload": {
                                     "amplitude": voltage_amplitude,
-                                    "phase": theta * 180 / (np.pi),
+                                    "theta": theta,
+                                    "omega": omega,
                                 },
                             }
                         )

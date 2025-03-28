@@ -5,7 +5,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-frequencies = np.array([[0, 0.1], [5, 1], [10, 3], [20, 5]])
+frequencies = np.array([[0, 0.1], [5, 1]])
 
 
 class VirtualADCComponent(BaseADCComponent):
