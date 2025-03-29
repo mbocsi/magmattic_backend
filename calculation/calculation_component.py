@@ -4,7 +4,7 @@ import asyncio
 import logging
 import numpy as np
 import math
-import time
+from scipy.signal import find_peaks
 from .windows import windows
 from type_defs import Window, CalculationStatus
 
@@ -46,6 +46,7 @@ class CalculationComponent(AppComponent):
 
         self.coil_props = parse_coil_props(coil_props)
         self.motor_theta = 0
+        self.theta_init = 0
 
     def calc_fft(self, data, T) -> tuple[np.ndarray, np.ndarray]:
         logger.debug(f"sending fft to queue: {data} {T}")
@@ -103,9 +104,21 @@ class CalculationComponent(AppComponent):
             filtered_fft[max_idx, 0] * 2 * math.pi,
         )
 
+    def peaks(self, magnitude: np.ndarray, phase: np.ndarray, min_snr=5) -> np.ndarray:
+        # logger.info(magnitude[:, 1])
+        # widths = np.arange(1, max_width + 1)
+        noise_floor = self.noise_floor(magnitude[:, 1])
+        indices = find_peaks(magnitude[:, 1], prominence=noise_floor * min_snr)[0]
+        peak_mags = magnitude[indices, :]
+        peak_phases = phase[indices, :]
+        return np.hstack((peak_mags, peak_phases[:, [1]]))
+
+    def noise_floor(self, magnitude: np.ndarray) -> float:
+        return np.sqrt(np.sum(magnitude**2)) / magnitude.shape[0]
+
     def calc_bfield(self, volts: float, omega: float, theta: float) -> np.ndarray:
-        vector = np.array([np.cos(theta), np.sin(theta)])
-        mag = (volts / (self.coil_props["windings"] * self.coil_props["area"] * omega),)
+        vector = np.array([-np.cos(theta), np.sin(theta)])
+        mag = volts / (self.coil_props["windings"] * self.coil_props["area"] * omega)
         return vector * mag
 
     def process_voltage_data(self, data, loop):
@@ -118,6 +131,8 @@ class CalculationComponent(AppComponent):
 
         magnitude, phase = self.calc_fft(self.voltage_data, T)
         voltage_amplitude, theta, omega = self.calc_vampl(magnitude, phase)
+        peaks = self.peaks(magnitude, phase)
+        logger.info(peaks)
         bfield = self.calc_bfield(voltage_amplitude, omega, theta)
 
         # Use run_coroutine_threadsafe() to ensure safe queue insertion
@@ -152,8 +167,7 @@ class CalculationComponent(AppComponent):
 
         if not self.rolling_fft:
             self.voltage_data.clear()
-        # endTime = time.perf_counter()
-        # logger.info(f"process_voltage_data perf: {endTime - starTime}")
+        self.theta_init = self.motor_theta
 
     async def recv_control(self) -> None:
         loop = asyncio.get_running_loop()
