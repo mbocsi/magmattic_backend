@@ -156,47 +156,88 @@ class LCDController(LCDInterface):
             logger.info("Continuing without GPIO functionality")
             self.button_states = {}  # Empty dict to indicate no buttons
 
-    async def poll_buttons(self) -> None:
-        """Poll buttons for state changes with debouncing"""
-        debounce_time = 0.2  # seconds
-        last_press_time = time.time()
-        
-        while True:
-            try:
-                current_time = time.time()
-                
-                # Skip debounce period
-                if current_time - last_press_time < debounce_time:
-                    await asyncio.sleep(0.01)
+   # Replace the existing poll_buttons method with this enhanced version:
+
+async def poll_buttons(self) -> None:
+    """Poll buttons for state changes with enhanced debouncing and debugging"""
+    debounce_time = 0.2  # seconds
+    last_press_time = time.time()
+    
+    # Store previous readings for comparison
+    last_readings = {
+        BUTTON_MODE: 1,  # Initialize to HIGH (not pressed)
+        BUTTON_POWER: 1
+    }
+    
+    logger.info("Button polling started")
+    
+    while True:
+        try:
+            current_time = time.time()
+            
+            # Skip debounce period
+            if current_time - last_press_time < debounce_time:
+                await asyncio.sleep(0.01)
+                continue
+            
+            button_pressed = False
+            
+            for button in [BUTTON_MODE, BUTTON_POWER]:
+                # Skip if button doesn't exist in our state dict
+                if button not in self.button_states:
                     continue
+                    
+                # Read current state
+                current_state = GPIO.input(button)
                 
-                button_pressed = False
+                # Log any change from previous reading (for debugging)
+                if current_state != last_readings[button]:
+                    logger.debug(f"Button {button} changed: {last_readings[button]} -> {current_state}")
+                    last_readings[button] = current_state
                 
-                for button in [BUTTON_MODE, BUTTON_POWER]:
-                    # Skip if button doesn't exist in our state dict
-                    if button not in self.button_states:
+                previous_state = self.button_states[button]
+                
+                # Button press detected (HIGH to LOW transition with pull-up)
+                if previous_state == 1 and current_state == 0:
+                    logger.info(f"Button press detected on pin {button}")
+                    
+                    # Extra validation - confirm it's really pressed by reading again
+                    validation_state = GPIO.input(button)
+                    if validation_state != 0:
+                        logger.warning(f"False positive detected on pin {button}, validation state: {validation_state}")
                         continue
                         
-                    current_state = GPIO.input(button)
-                    previous_state = self.button_states[button]
-                    
-                    # Button press detected (HIGH to LOW transition with pull-up)
-                    if previous_state == 1 and current_state == 0:
-                        logger.info(f"Button press detected on pin {button}")
-                        await self.handle_button_press(button)
-                        button_pressed = True
-                        last_press_time = current_time  # Reset debounce timer
-                    
-                    # Update state
-                    self.button_states[button] = current_state
+                    await self.handle_button_press(button)
+                    button_pressed = True
+                    last_press_time = current_time  # Reset debounce timer
                 
-                # Short delay between polls
-                await asyncio.sleep(0.01)
-                
-            except Exception as e:
-                logger.error(f"Error polling buttons: {e}")
-                await asyncio.sleep(1)  # Longer delay on error
+                # Update state
+                self.button_states[button] = current_state
+            
+            # Short delay between polls
+            await asyncio.sleep(0.01)
+            
+        except Exception as e:
+            logger.error(f"Error polling buttons: {e}")
+            await asyncio.sleep(1)  # Longer delay on error
 
+# Also add this button test method:
+
+async def test_buttons(self) -> None:
+    """Test function to check button state directly"""
+    logger.info("Starting button state test...")
+    
+    for i in range(10):  # Read 10 samples
+        try:
+            mode_state = GPIO.input(BUTTON_MODE)
+            power_state = GPIO.input(BUTTON_POWER)
+            
+            logger.info(f"Button states - MODE: {mode_state}, POWER: {power_state}")
+            await asyncio.sleep(1)
+        except Exception as e:
+            logger.error(f"Button test error: {e}")
+    
+    logger.info("Button test completed")
     async def poll_potentiometers(self) -> None:
         """Poll potentiometer values"""
         pot_debounce_value = 5  # Minimum change to register as intentional
