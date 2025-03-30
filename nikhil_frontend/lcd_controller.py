@@ -560,6 +560,33 @@ class LCDController(LCDInterface):
         "line2": line2
         })
 
+
+    async def update_display_with_state(self) -> None:
+    """Update display based on current state"""
+    if not self.display_active:
+        return
+        
+    # Determine lines based on current state
+    if self.current_state == State.B_FIELD:
+        b_field_formatted = self.format_magnetic_field(self.b_field)
+        time_str = self.format_time(self.data_acquisition_time)
+        await self.update_display(f"B: {b_field_formatted}", f"Acq Time: {time_str}")
+        
+    elif self.current_state == State.FFT:
+        if not self.fft_data:
+            await self.update_display("FFT View", "No data yet")
+        else:
+            peak_freq, peak_mag = self.calculate_peak(self.fft_data)
+            await self.update_display(f"Peak: {peak_freq:.1f}Hz", f"Mag: {peak_mag:.6f}V")
+            
+    elif self.current_state == State.ADJUSTING:
+        time_str = self.format_time(self.data_acquisition_time)
+        await self.update_display("ADJUSTING", f"Acq Time: {time_str}")
+        
+    else:
+        await self.update_display("Unknown State", f"State: {self.current_state}")
+        
+
     def calculate_peak(self, fft_data) -> tuple[float, float]:
         """Calculate the peak frequency and magnitude from FFT data"""
         if not fft_data:
