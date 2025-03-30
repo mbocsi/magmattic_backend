@@ -89,43 +89,45 @@ class LCDController(LCDInterface):
             "windings": 1000,
             "area": 0.01
         }
-
+        
     async def initialize_display(self) -> None:
-    """Initialize the LCD display with simpler approach"""
-    try:
-        # Initialize LCD with minimal settings (like the working test)
-        logger.info("Initializing LCD...")
-        
-        self.lcd = await asyncio.to_thread(
-            CharLCD,
-            i2c_expander="PCF8574",
-            address=I2C_ADDR,
-            port=I2C_BUS,
-            cols=LCD_WIDTH,
-            rows=LCD_HEIGHT,
-            dotsize=8
-            # Removed charmap parameter
-        )
-        
-        # Simple delay
-        await asyncio.sleep(1)
-        
-        # Clear once
-        await asyncio.to_thread(self.lcd.clear)
-        
-        logger.info("LCD initialized successfully")
-        
-        # Show welcome message
-        await self.update_display("Magnetometer", "Initializing...")
-        await asyncio.sleep(1)
-        
-    except Exception as e:
-        logger.error(f"LCD initialization failed: {e}")
-        self._create_dummy_lcd()
-        
-    # Setup GPIO buttons
-    await self._setup_gpio()
+        """Initialize the LCD display with simpler approach"""
+        try:
+            # Initialize LCD with minimal settings (like the working test)
+            logger.info("Initializing LCD...")
+            
+            self.lcd = await asyncio.to_thread(
+                CharLCD,
+                i2c_expander="PCF8574",
+                address=I2C_ADDR,
+                port=I2C_BUS,
+                cols=LCD_WIDTH,
+                rows=LCD_HEIGHT,
+                dotsize=8
+                # Removed charmap parameter
+            )
+            
+            # Simple delay
+            await asyncio.sleep(1)
+            
+            # Clear once
+            await asyncio.to_thread(self.lcd.clear)
+            
+            logger.info("LCD initialized successfully")
+            
+            # Show welcome message
+            await self.update_display("Magnetometer", "Initializing...")
+            await asyncio.sleep(1)
+            
+        except Exception as e:
+            logger.error(f"LCD initialization failed: {e}")
+            self._create_dummy_lcd()
+            
+        # Setup GPIO buttons
+        await self._setup_gpio()
 
+
+    
     def _create_dummy_lcd(self) -> None:
         """Create a fallback LCD implementation when hardware fails"""
         class DummyLCD:
