@@ -308,7 +308,7 @@ class LCDController(LCDInterface):
             # Update display based on new state
             await self.update_display_with_state()
 
-   async def toggle_power(self) -> None:
+    async def toggle_power(self) -> None:
     """Toggle LCD display power on/off"""
     self.display_active = not self.display_active
     
