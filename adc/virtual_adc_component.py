@@ -7,7 +7,7 @@ import threading
 
 logger = logging.getLogger(__name__)
 
-frequencies = np.array([[0, 0.1], [5, 1], [20, 0.05]])
+frequencies = np.array([[0, 0.1], [5, 1], [20, 0.05], [60.1, 0.1]])
 
 
 class VirtualADCComponent(BaseADCComponent):

@@ -77,37 +77,30 @@ class CalculationComponent(AppComponent):
         return magnitude_data, phase_data
 
     def calc_vampl(
-        self, fft: np.ndarray, phase: np.ndarray, freq_calc_range: float = 3
-    ) -> tuple[float, float, float]:
+        self,
+        fft: np.ndarray,
+        freq: float,
+        freq_calc_range: float = 3,
+    ) -> float:
+        # Determine frequency resolution
         freq_res = ((fft[[-1], [0]] - fft[[0], [0]]) / fft.shape[0])[0]
 
+        # Convert frequency range to index range
         idx_range = freq_calc_range // freq_res
-        filtered_fft = fft[(fft[:, 0] >= 1)]
-        filtered_phase = phase[(phase[:, 0] >= 1)]
-        filtered_fft = filtered_fft[filtered_fft[:, 0] <= 30]
-        filtered_phase = filtered_phase[filtered_phase[:, 0] <= 30]
 
-        max_idx = np.argmax(filtered_fft, axis=0)[1]
-
-        lower_idx, upper_idx = int(max_idx - idx_range), int(max_idx + idx_range)
-
-        magnitudes = filtered_fft[lower_idx : upper_idx + 1, 1]
+        # Find magnitudes and power within range
+        idx = np.where(fft[:, 0] == freq)[0]
+        lower_idx, upper_idx = int(idx - idx_range), int(idx + idx_range)
+        magnitudes = fft[lower_idx : upper_idx + 1, 1]
         raw_power = (freq_res * magnitudes**2).sum()
 
+        # Convert power into amplitude
         estimated_power = raw_power / windows[self.window].enbw
         estimated_amplitude = math.sqrt(estimated_power)
 
-        estimated_phase = filtered_phase[max_idx, 1]
-
-        return (
-            estimated_amplitude,
-            estimated_phase,
-            filtered_fft[max_idx, 0] * 2 * math.pi,
-        )
+        return estimated_amplitude
 
     def peaks(self, magnitude: np.ndarray, phase: np.ndarray, min_snr=5) -> np.ndarray:
-        # logger.info(magnitude[:, 1])
-        # widths = np.arange(1, max_width + 1)
         noise_floor = self.noise_floor(magnitude[:, 1])
         indices = find_peaks(magnitude[:, 1], prominence=noise_floor * min_snr)[0]
         peak_mags = magnitude[indices, :]
@@ -115,7 +108,7 @@ class CalculationComponent(AppComponent):
         return np.hstack((peak_mags, peak_phases[:, [1]]))
 
     def noise_floor(self, magnitude: np.ndarray, noise_perc=0.9) -> float:
-        values = int(magnitude.shape[0] * 0.9)
+        values = int(magnitude.shape[0] * noise_perc)
         lowest_values = np.sort(magnitude)[:values]
         return np.sqrt(np.sum(lowest_values**2) / lowest_values.shape[0])
 
@@ -125,17 +118,39 @@ class CalculationComponent(AppComponent):
         return vector * mag
 
     def process_voltage_data(self, data, loop):
-        # starTime = time.perf_counter()
         self.voltage_data.extend(data["payload"])
         if len(self.voltage_data) < self.Nsig:
             return
 
         T = self.Nsig / self.sample_rate
 
+        # Calculate FFT
         magnitude, phase = self.calc_fft(self.voltage_data, T)
-        voltage_amplitude, theta, omega = self.calc_vampl(magnitude, phase)
+
+        # Find signals
         peaks = self.peaks(magnitude, phase, min_snr=self.min_snr)
-        bfield = self.calc_bfield(voltage_amplitude, omega, theta)
+
+        # Find amplitudes of signals
+        voltage_amplitudes = np.zeros((peaks.shape[0], 1))
+        voltage_amplitudes[:, 0] = np.array(
+            [self.calc_vampl(magnitude, freq) for freq in peaks[:, 0].tolist()]
+        )
+        peaks = np.hstack((peaks, voltage_amplitudes))
+
+        # Find bfield of signals
+        bfields = np.zeros((peaks.shape[0], 2))
+        bfields[:, 0:2] = [
+            self.calc_bfield(
+                volts=volt_ampl[2], omega=volt_ampl[0] * 2 * np.pi, theta=volt_ampl[1]
+            )
+            for volt_ampl in peaks[:, [0, 2, 3]].tolist()
+        ]
+        peaks = np.hstack((peaks, bfields))
+
+        # Filter phase by detected signals
+        phase[:, 1] = np.where(
+            np.isin(phase[:, 0], peaks[:, 0]), phase[:, 1], np.zeros_like(phase[:, 1])
+        )
 
         # Use run_coroutine_threadsafe() to ensure safe queue insertion
         loop.call_soon_threadsafe(
@@ -154,27 +169,14 @@ class CalculationComponent(AppComponent):
         loop.call_soon_threadsafe(
             self.pub_queue.put_nowait,
             {
-                "topic": "signal/data",
-                "payload": {
-                    "amplitude": voltage_amplitude,
-                    "theta": theta,
-                    "omega": omega,
-                },
-            },
-        )
-        loop.call_soon_threadsafe(
-            self.pub_queue.put_nowait,
-            {"topic": "bfield/data", "payload": bfield.tolist()},
-        )
-        loop.call_soon_threadsafe(
-            self.pub_queue.put_nowait,
-            {
                 "topic": "signals/data",
                 "payload": [
                     {
                         "freq": peak[0],
                         "mag": peak[1],
                         "phase": peak[2],
+                        "ampl": peak[3],
+                        "bfield": peak[4:],
                     }
                     for peak in peaks.tolist()
                 ],
