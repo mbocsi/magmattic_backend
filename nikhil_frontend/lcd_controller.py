@@ -78,7 +78,7 @@ class LCDController(LCDInterface):
         
         # Display rate limiting
         self.last_display_update = 0
-        self.display_update_interval = 0.5  # Update at most every 0.5 seconds
+        self.display_update_interval = 1.00  # Update at most every1 seconds
         
         # Conversion factors (to be adjusted based on circuit characteristics)
         self.voltage_to_tesla_factor = 1.0  # Convert voltage to Tesla
@@ -91,45 +91,40 @@ class LCDController(LCDInterface):
         }
 
     async def initialize_display(self) -> None:
-        """Initialize the LCD display and GPIO pins"""
-        try:
-            # Initialize LCD
-            logger.info("Initializing LCD...")
-            
-            # Create LCD with a thread to prevent blocking
-            self.lcd = await asyncio.to_thread(
-                CharLCD,
-                i2c_expander="PCF8574",
-                address=I2C_ADDR,
-                port=I2C_BUS,
-                cols=LCD_WIDTH,
-                rows=LCD_HEIGHT,
-                dotsize=8,
-                # Some LCDs work better with specific charmaps
-                charmap='A00' 
-            )
-            
-            # Give the LCD time to initialize and stabilize
-            await asyncio.sleep(0.5)
-            
-            # Clear the display a few times to reset any lingering state
-            for _ in range(3):
-                await asyncio.to_thread(self.lcd.clear)
-                await asyncio.sleep(0.1)
-                
-            logger.info("LCD initialized successfully")
-            
-            # Show welcome message
-            await self.update_display("Magnetometer", "Initializing...")
-            await asyncio.sleep(1)
-            
-        except Exception as e:
-            logger.error(f"LCD initialization failed: {e}")
-            # Create a fallback text-only LCD
-            self._create_dummy_lcd()
+    """Initialize the LCD display with simpler approach"""
+    try:
+        # Initialize LCD with minimal settings (like the working test)
+        logger.info("Initializing LCD...")
         
-        # Setup GPIO buttons
-        await self._setup_gpio()
+        self.lcd = await asyncio.to_thread(
+            CharLCD,
+            i2c_expander="PCF8574",
+            address=I2C_ADDR,
+            port=I2C_BUS,
+            cols=LCD_WIDTH,
+            rows=LCD_HEIGHT,
+            dotsize=8
+            # Removed charmap parameter
+        )
+        
+        # Simple delay
+        await asyncio.sleep(1)
+        
+        # Clear once
+        await asyncio.to_thread(self.lcd.clear)
+        
+        logger.info("LCD initialized successfully")
+        
+        # Show welcome message
+        await self.update_display("Magnetometer", "Initializing...")
+        await asyncio.sleep(1)
+        
+    except Exception as e:
+        logger.error(f"LCD initialization failed: {e}")
+        self._create_dummy_lcd()
+        
+    # Setup GPIO buttons
+    await self._setup_gpio()
 
     def _create_dummy_lcd(self) -> None:
         """Create a fallback LCD implementation when hardware fails"""
@@ -379,28 +374,26 @@ class LCDController(LCDInterface):
         except Exception as e:
             logger.error(f"Error toggling power: {e}")
 
-    async def update_display_with_state(self) -> None:
-        """Update display based on current state with rate limiting"""
-        if not self.display_active:
-            return
-            
-        # Rate limit display updates
-        current_time = time.time()
-        if current_time - self.last_display_update < self.display_update_interval:
-            return
-            
-        self.last_display_update = current_time
-            
-        try:
-            if self.current_state == State.B_FIELD:
-                await self.display_b_field_view()
-            elif self.current_state == State.FFT:
-                await self.display_fft_view()
-            elif self.current_state == State.ADJUSTING:
-                await self.display_adjusting_view()
-        except Exception as e:
-            logger.error(f"Error updating display: {e}")
-            await self.update_display("Display Error", str(e)[:16])
+    async def update_display(self, line1: str, line2: str) -> None:
+    """Update display with simpler approach"""
+    if not self.display_active or not self.lcd:
+        return
+        
+    try:
+        # Clear display
+        await asyncio.to_thread(self.lcd.clear)
+        await asyncio.sleep(0.1)  # Simple delay
+        
+        # Write first line
+        await asyncio.to_thread(lambda: setattr(self.lcd, 'cursor_pos', (0, 0)))
+        await asyncio.to_thread(self.lcd.write_string, line1[:LCD_WIDTH])
+        
+        # Write second line
+        await asyncio.to_thread(lambda: setattr(self.lcd, 'cursor_pos', (1, 0)))
+        await asyncio.to_thread(self.lcd.write_string, line2[:LCD_WIDTH])
+        
+    except Exception as e:
+        logger.error(f"Display update failed: {e}")
 
     async def display_b_field_view(self) -> None:
         """Show B-field view with magnetic field reading and acquisition time"""
