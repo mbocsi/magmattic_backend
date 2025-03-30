@@ -517,33 +517,33 @@ async def test_buttons(self) -> None:
             # Small delay to prevent CPU overload
             await asyncio.sleep(0.01)
             
-    async def run(self) -> None:
-        """Main run loop"""
-        try:
-            # Initialize display
-            await self.initialize_display()
-            
-            # Start tasks
-            data_task = asyncio.create_task(self.process_data())
-            pot_task = asyncio.create_task(self.poll_potentiometers())
-            
-            # Initial display update
-            await self.update_display("Magnetometer", "Ready")
-            await asyncio.sleep(1)
-            await self.update_display_with_state()
-            
-            # Create a heartbeat task to ensure system is responsive
-            heartbeat_task = asyncio.create_task(self._heartbeat())
-            
-            # Keep main loop running
-            await asyncio.gather(data_task, pot_task, heartbeat_task)
-            
-        except asyncio.CancelledError:
-            logger.info("LCD controller tasks cancelled")
-        except Exception as e:
-            logger.error(f"LCD controller error: {e}")
-        finally:
-            await self.cleanup()
+async def run(self) -> None:
+    """Main run loop"""
+    try:
+        # Initialize display
+        await self.initialize_display()
+        
+        # Start tasks
+        data_task = asyncio.create_task(self.process_data())
+        pot_task = asyncio.create_task(self.poll_potentiometers())
+        
+        # Initial display update
+        await self.update_display("Magnetometer", "Ready")
+        await asyncio.sleep(1)
+        await self.update_display_with_state()
+        
+        # Create a heartbeat task to ensure system is responsive
+        heartbeat_task = asyncio.create_task(self._heartbeat())
+        
+        # Keep main loop running
+        await asyncio.gather(data_task, pot_task, heartbeat_task)
+        
+    except asyncio.CancelledError:
+        logger.info("LCD controller tasks cancelled")
+    except Exception as e:
+        logger.error(f"LCD controller error: {e}")
+    finally:
+        await self.cleanup()
             
     async def _heartbeat(self) -> None:
         """Periodic heartbeat to check system health"""
