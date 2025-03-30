@@ -299,7 +299,7 @@ class LCDController(LCDInterface):
     async def poll_buttons(self) -> None:
         """Poll buttons for state changes with debouncing"""
         logger.info("Button polling task started")
-        debounce_time = 0.3  # seconds - increased for better stability
+        debounce_time = 0.2  # seconds - increased for better stability
         last_press_time = time.time()
         
         try:
@@ -346,7 +346,7 @@ class LCDController(LCDInterface):
     async def poll_potentiometers(self) -> None:
         """Poll potentiometer values"""
         logger.info("Potentiometer polling task started")
-        pot_debounce_value = 20  # Increased threshold to prevent noise
+        pot_debounce_value = 10  # Increased threshold to prevent noise
         
         try:
             while True:
