@@ -377,25 +377,25 @@ class LCDController(LCDInterface):
             logger.error(f"Error toggling power: {e}")
 
     async def update_display(self, line1: str, line2: str) -> None:
-    """Update display with simpler approach"""
-    if not self.display_active or not self.lcd:
-        return
-        
-    try:
-        # Clear display
-        await asyncio.to_thread(self.lcd.clear)
-        await asyncio.sleep(0.1)  # Simple delay
-        
-        # Write first line
-        await asyncio.to_thread(lambda: setattr(self.lcd, 'cursor_pos', (0, 0)))
-        await asyncio.to_thread(self.lcd.write_string, line1[:LCD_WIDTH])
-        
-        # Write second line
-        await asyncio.to_thread(lambda: setattr(self.lcd, 'cursor_pos', (1, 0)))
-        await asyncio.to_thread(self.lcd.write_string, line2[:LCD_WIDTH])
-        
-    except Exception as e:
-        logger.error(f"Display update failed: {e}")
+        """Update display with simpler approach"""
+        if not self.display_active or not self.lcd:
+            return
+            
+        try:
+            # Clear display
+            await asyncio.to_thread(self.lcd.clear)
+            await asyncio.sleep(0.1)  # Simple delay
+            
+            # Write first line
+            await asyncio.to_thread(lambda: setattr(self.lcd, 'cursor_pos', (0, 0)))
+            await asyncio.to_thread(self.lcd.write_string, line1[:LCD_WIDTH])
+            
+            # Write second line
+            await asyncio.to_thread(lambda: setattr(self.lcd, 'cursor_pos', (1, 0)))
+            await asyncio.to_thread(self.lcd.write_string, line2[:LCD_WIDTH])
+            
+        except Exception as e:
+            logger.error(f"Display update failed: {e}")
 
     async def display_b_field_view(self) -> None:
         """Show B-field view with magnetic field reading and acquisition time"""
