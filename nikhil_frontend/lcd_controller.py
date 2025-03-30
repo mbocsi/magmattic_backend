@@ -35,7 +35,7 @@ MIN_DAT = 0.1  # Minimum data acquisition time (seconds)
 MAX_DAT = 100.0  # Maximum data acquisition time (seconds)
 DEFAULT_DAT = 1.0  # Default data acquisition time (seconds)
 
-# Debug mode
+# Debug mode for additional logging
 DEBUG_MODE = True
 
 class LCDController(LCDInterface):
@@ -62,7 +62,7 @@ class LCDController(LCDInterface):
         self.b_field = 0.0  # Magnetic field in Tesla
         self.data_acquisition_time = DEFAULT_DAT
         self.last_pot_value = 341  # Middle position by default
-        self.peak_freq = 50.0  # Default frequency (Hz)
+        self.peak_freq = 0.0
         self.peak_mag = 0.0
         
         # Potentiometer adjustment time tracking
@@ -74,12 +74,28 @@ class LCDController(LCDInterface):
         
         # Button states for debouncing
         self.button_states = {}
+        
+        # Display rate limiting
+        self.last_display_update = 0
+        self.display_update_interval = 0.5  # Update at most every 0.5 seconds
+        
+        # Conversion factors (to be adjusted based on circuit characteristics)
+        self.voltage_to_tesla_factor = 1.0  # Convert voltage to Tesla
+        
+        # Coil properties (from Marton's code)
+        self.coil_props = {
+            "impedence": 90,
+            "windings": 1000,
+            "area": 0.01
+        }
 
     async def initialize_display(self) -> None:
         """Initialize the LCD display and GPIO pins"""
         try:
-            # Initialize LCD with basic settings
+            # Initialize LCD
             logger.info("Initializing LCD...")
+            
+            # Create LCD with a thread to prevent blocking
             self.lcd = await asyncio.to_thread(
                 CharLCD,
                 i2c_expander="PCF8574",
@@ -88,13 +104,19 @@ class LCDController(LCDInterface):
                 cols=LCD_WIDTH,
                 rows=LCD_HEIGHT,
                 dotsize=8,
+                # Some LCDs work better with specific charmaps
+                charmap='A00' 
             )
             
-            logger.info("LCD initialized successfully")
-            
-            # Clear display
-            await asyncio.to_thread(self.lcd.clear)
+            # Give the LCD time to initialize and stabilize
             await asyncio.sleep(0.5)
+            
+            # Clear the display a few times to reset any lingering state
+            for _ in range(3):
+                await asyncio.to_thread(self.lcd.clear)
+                await asyncio.sleep(0.1)
+                
+            logger.info("LCD initialized successfully")
             
             # Show welcome message
             await self.update_display("Magnetometer", "Initializing...")
@@ -119,16 +141,14 @@ class LCDController(LCDInterface):
                 
             def close(self):
                 logger.info("LCD would close")
+            
+        # Give the dummy LCD a cursor_pos property that can be set
+        # This avoids attributes errors in the rest of the code
+        class DummyLCDWithCursor(DummyLCD):
+            def __init__(self):
+                self.cursor_pos = (0, 0)
                 
-            @property
-            def cursor_pos(self):
-                return (0, 0)
-                
-            @cursor_pos.setter
-            def cursor_pos(self, value):
-                pass
-                
-        self.lcd = DummyLCD()
+        self.lcd = DummyLCDWithCursor()
         logger.info("Using dummy LCD implementation")
 
     async def _setup_gpio(self) -> None:
@@ -161,11 +181,9 @@ class LCDController(LCDInterface):
             self.button_states = {}  # Empty dict to indicate no buttons
 
     async def poll_buttons(self) -> None:
-        """Poll buttons for state changes with enhanced debouncing"""
-        debounce_time = 0.5  # Increased debounce time
+        """Poll buttons for state changes with debouncing"""
+        debounce_time = 0.3  # seconds - increased for better stability
         last_press_time = time.time()
-        
-        logger.info("Button polling started")
         
         while True:
             try:
@@ -173,61 +191,64 @@ class LCDController(LCDInterface):
                 
                 # Skip debounce period
                 if current_time - last_press_time < debounce_time:
-                    await asyncio.sleep(0.1)
+                    await asyncio.sleep(0.05)
                     continue
+                
+                button_pressed = False
                 
                 for button in [BUTTON_MODE, BUTTON_POWER]:
                     # Skip if button doesn't exist in our state dict
                     if button not in self.button_states:
                         continue
+                        
+                    # Take multiple readings to ensure stability
+                    readings = []
+                    for _ in range(3):
+                        readings.append(GPIO.input(button))
+                        await asyncio.sleep(0.01)
                     
-                    # Read current state
-                    current_state = GPIO.input(button)
+                    # Use majority vote to determine current state
+                    current_state = 1 if sum(readings) >= 2 else 0
                     previous_state = self.button_states[button]
                     
                     # Button press detected (HIGH to LOW transition with pull-up)
                     if previous_state == 1 and current_state == 0:
                         logger.info(f"Button press detected on pin {button}")
-                        
-                        # Extra validation - confirm it's really pressed
-                        await asyncio.sleep(0.05)
-                        validation_state = GPIO.input(button)
-                        if validation_state != 0:
-                            logger.warning(f"False positive on pin {button}")
-                            continue
-                            
                         await self.handle_button_press(button)
+                        button_pressed = True
                         last_press_time = current_time  # Reset debounce timer
                     
                     # Update state
                     self.button_states[button] = current_state
                 
-                # Longer delay between polls
-                await asyncio.sleep(0.1)
+                # Longer delay between polls to reduce CPU usage
+                await asyncio.sleep(0.05)
                 
+            except asyncio.CancelledError:
+                logger.info("Button polling task cancelled")
+                break
             except Exception as e:
                 logger.error(f"Error polling buttons: {e}")
                 await asyncio.sleep(1)  # Longer delay on error
 
     async def test_buttons(self) -> None:
-        """Test function to check button state directly"""
-        logger.info("Starting button state test...")
+        """Test button states and responsiveness"""
+        logger.info("Testing button states...")
         
-        for i in range(5):  # Read 5 samples
-            try:
-                mode_state = GPIO.input(BUTTON_MODE)
-                power_state = GPIO.input(BUTTON_POWER)
+        for button in [BUTTON_MODE, BUTTON_POWER]:
+            if button not in self.button_states:
+                logger.warning(f"Button {button} not configured")
+                continue
                 
-                logger.info(f"Button states - MODE: {mode_state}, POWER: {power_state}")
-                await asyncio.sleep(1)
-            except Exception as e:
-                logger.error(f"Button test error: {e}")
-        
-        logger.info("Button test completed")
+            # Read current state
+            state = GPIO.input(button)
+            logger.info(f"Button {button} state: {'HIGH (not pressed)' if state else 'LOW (pressed)'}")
+            
+        logger.info("Button test complete")
 
     async def poll_potentiometers(self) -> None:
         """Poll potentiometer values"""
-        pot_debounce_value = 20  # Increased minimum change to register as intentional
+        pot_debounce_value = 20  # Increased threshold to prevent noise from triggering changes
         
         while True:
             try:
@@ -236,7 +257,8 @@ class LCDController(LCDInterface):
                 
                 # Check if potentiometer value has changed significantly
                 if abs(pot_value - self.last_pot_value) > pot_debounce_value:
-                    logger.debug(f"POT1 value changed: {pot_value} (was {self.last_pot_value})")
+                    if DEBUG_MODE:
+                        logger.info(f"POT1 value changed: {pot_value} (was {self.last_pot_value})")
                     self.last_pot_value = pot_value
                     self.pot_last_change_time = time.time()
                     
@@ -246,6 +268,7 @@ class LCDController(LCDInterface):
                         await self.update_display_with_state()
                     
                     # Calculate new data acquisition time using logarithmic scale
+                    # Map pot value (0-1023) to data acquisition time (0.1-100s)
                     # t = 0.1 * 10^(pot_value/341)
                     new_dat = MIN_DAT * (10 ** (pot_value / 341.0))
                     self.data_acquisition_time = round(new_dat, 2)
@@ -264,8 +287,11 @@ class LCDController(LCDInterface):
                     self.current_state = State.B_FIELD
                     await self.update_display_with_state()
                 
-                await asyncio.sleep(0.2)  # Longer delay between polls
+                await asyncio.sleep(0.1)  # Longer delay between polls
                 
+            except asyncio.CancelledError:
+                logger.info("Potentiometer polling task cancelled")
+                break
             except Exception as e:
                 logger.error(f"Error polling potentiometers: {e}")
                 await asyncio.sleep(1)  # Longer delay on error
@@ -336,46 +362,44 @@ class LCDController(LCDInterface):
             await self.update_display_with_state()
 
     async def toggle_power(self) -> None:
-        """Toggle LCD display power on/off (simplified)"""
-        self.display_active = not self.display_active
-        
+        """Toggle LCD display power on/off"""
         try:
+            self.display_active = not self.display_active
+            
             if self.display_active:
-                # Just display content to "turn on"
+                logger.info("Turning display ON")
+                # Just clear and update - don't use backlight which may not be supported
                 await asyncio.to_thread(self.lcd.clear)
                 self.current_state = State.B_FIELD  # Reset to default state
                 await self.update_display_with_state()
             else:
-                # Clear display to "turn off"
+                logger.info("Turning display OFF")
                 await asyncio.to_thread(self.lcd.clear)
-            
-            logger.info(f"Display power toggled: {self.display_active}")
         except Exception as e:
             logger.error(f"Error toggling power: {e}")
-        
-    # Modify update_display method to include proper timing
-async def update_display(self, line1: str, line2: str) -> None:
-    """Update both lines of the LCD display with proper timing"""
-    if not self.display_active or not self.lcd:
-        return
-        
-    try:
-        # Clear with adequate delay
-        await asyncio.to_thread(self.lcd.clear)
-        await asyncio.sleep(0.05)  # Wait for clear to finish
-        
-        # Write first line
-        await asyncio.to_thread(self.lcd.write_string, line1[:LCD_WIDTH])
-        await asyncio.sleep(0.02)  # Short delay between operations
-        
-        # Position cursor for second line
-        await asyncio.to_thread(lambda: setattr(self.lcd, 'cursor_pos', (1, 0)))
-        await asyncio.sleep(0.02)  # Short delay
-        
-        # Write second line
-        await asyncio.to_thread(self.lcd.write_string, line2[:LCD_WIDTH])
-    except Exception as e:
-        logger.error(f"Display update failed: {e}")
+
+    async def update_display_with_state(self) -> None:
+        """Update display based on current state with rate limiting"""
+        if not self.display_active:
+            return
+            
+        # Rate limit display updates
+        current_time = time.time()
+        if current_time - self.last_display_update < self.display_update_interval:
+            return
+            
+        self.last_display_update = current_time
+            
+        try:
+            if self.current_state == State.B_FIELD:
+                await self.display_b_field_view()
+            elif self.current_state == State.FFT:
+                await self.display_fft_view()
+            elif self.current_state == State.ADJUSTING:
+                await self.display_adjusting_view()
+        except Exception as e:
+            logger.error(f"Error updating display: {e}")
+            await self.update_display("Display Error", str(e)[:16])
 
     async def display_b_field_view(self) -> None:
         """Show B-field view with magnetic field reading and acquisition time"""
@@ -385,7 +409,9 @@ async def update_display(self, line1: str, line2: str) -> None:
         # Format data acquisition time
         time_str = self.format_time(self.data_acquisition_time)
         
-        logger.info(f"Displaying B-field: {b_field_formatted}, Acq Time: {time_str}")
+        if DEBUG_MODE:
+            logger.info(f"Displaying B-field: {b_field_formatted}, Time: {time_str}")
+        
         await self.update_display(f"B: {b_field_formatted}", f"Acq Time: {time_str}")
 
     async def display_fft_view(self) -> None:
@@ -400,34 +426,43 @@ async def update_display(self, line1: str, line2: str) -> None:
         freq_str = f"Peak: {peak_freq:.1f}Hz"
         mag_str = f"Mag: {peak_mag:.6f}V"
         
-        logger.info(f"Displaying FFT: {freq_str}, {mag_str}")
+        if DEBUG_MODE:
+            logger.info(f"Displaying FFT: {freq_str}, {mag_str}")
+        
         await self.update_display(freq_str, mag_str)
 
     async def display_adjusting_view(self) -> None:
         """Show adjusting view while potentiometer is being turned"""
         time_str = self.format_time(self.data_acquisition_time)
-        logger.info(f"Displaying adjusting view: {time_str}")
+        
+        if DEBUG_MODE:
+            logger.info(f"Displaying Adjusting: Time: {time_str}")
+            
         await self.update_display("ADJUSTING", f"Acq Time: {time_str}")
 
     async def update_display(self, line1: str, line2: str) -> None:
-        """Update both lines of the LCD display (simplified)"""
+        """Update both lines of the LCD display with proper timing"""
         if not self.display_active or not self.lcd:
             return
             
         try:
-            # Clear and update display with minimal commands
+            # Clear with adequate delay
             await asyncio.to_thread(self.lcd.clear)
-            await asyncio.sleep(0.1)  # Small delay after clear
+            await asyncio.sleep(0.05)  # Wait for clear to finish
             
+            # Write first line
             await asyncio.to_thread(self.lcd.write_string, line1[:LCD_WIDTH])
-            await asyncio.sleep(0.1)  # Small delay after writing
+            await asyncio.sleep(0.02)  # Short delay between operations
             
+            # Position cursor for second line
             await asyncio.to_thread(lambda: setattr(self.lcd, 'cursor_pos', (1, 0)))
-            await asyncio.sleep(0.1)  # Small delay after cursor positioning
+            await asyncio.sleep(0.02)  # Short delay
             
+            # Write second line
             await asyncio.to_thread(self.lcd.write_string, line2[:LCD_WIDTH])
             
-            logger.info(f"Display updated: {line1} | {line2}")
+            if DEBUG_MODE:
+                logger.debug(f"Updated display - Line1: '{line1}', Line2: '{line2}'")
         except Exception as e:
             logger.error(f"Display update failed: {e}")
 
@@ -437,27 +472,24 @@ async def update_display(self, line1: str, line2: str) -> None:
             return (0.0, 0.0)
             
         # Find the point with maximum magnitude
-        peak = max(fft_data, key=lambda x: x[1])
-        return (peak[0], peak[1])
+        return max(fft_data, key=lambda x: x[1])
     
     def calculate_b_field(self, voltage: float) -> float:
-        """Convert voltage to magnetic field strength (Tesla) using Marton's formula"""
-        # Define coil properties
-        coil_props = {
-            "impedence": 90,     # Coil impedance in ohms
-            "windings": 1000,    # Number of coil windings
-            "area": 0.01         # Coil area in square meters
-        }
+        """Calculate magnetic field strength (Tesla) using Faraday's law
         
-        # Get estimated frequency from FFT data (default to 50Hz if no data)
-        if self.fft_data and len(self.fft_data) > 0:
-            omega = self.peak_freq * 2 * 3.14159  # Convert Hz to radians/sec
+        Based on Marton's implementation from calculation_component.py
+        """
+        if not self.fft_data:
+            # Default to 50Hz if no FFT data yet
+            omega = 2 * 3.14159 * 50.0  # Default angular frequency (ω = 2πf)
         else:
-            omega = 50 * 2 * 3.14159  # Default 50Hz
+            # Get frequency from FFT peak for more accurate calculation
+            peak_freq, _ = self.calculate_peak(self.fft_data)
+            omega = 2 * 3.14159 * peak_freq  # Angular frequency ω = 2πf
         
-        # Calculate B-field using Faraday's law: V = N * A * dB/dt
-        # Rearranged: B = V / (N * A * ω)
-        b_field = voltage / (coil_props["windings"] * coil_props["area"] * omega)
+        # Apply Faraday's law: voltage = N * Area * dB/dt
+        # For sinusoidal field, B = V / (N * A * ω)
+        b_field = voltage / (self.coil_props["windings"] * self.coil_props["area"] * omega)
         
         return b_field
 
@@ -494,8 +526,6 @@ async def update_display(self, line1: str, line2: str) -> None:
                 else:
                     data_dict = data
 
-                logger.debug(f"Received data: {data_dict['topic']}")
-                
                 # Process voltage data
                 if data_dict["topic"] == "voltage/data":
                     if isinstance(data_dict["payload"], list) and len(data_dict["payload"]) > 0:
@@ -507,7 +537,9 @@ async def update_display(self, line1: str, line2: str) -> None:
                         self.last_voltage = voltage
                         self.voltage_buffer.append(voltage)
                         self.b_field = self.calculate_b_field(voltage)
-                        logger.debug(f"Calculated B-field: {self.b_field} T from voltage: {voltage} V")
+                        
+                        if DEBUG_MODE and len(self.voltage_buffer) % 10 == 0:
+                            logger.debug(f"Voltage: {voltage:.3f}V, B-field: {self.format_magnetic_field(self.b_field)}")
                 
                 # Process FFT data
                 elif data_dict["topic"] == "fft/data":
@@ -516,12 +548,16 @@ async def update_display(self, line1: str, line2: str) -> None:
                     # Calculate peak
                     if self.fft_data:
                         self.peak_freq, self.peak_mag = self.calculate_peak(self.fft_data)
-                        logger.debug(f"Peak frequency: {self.peak_freq} Hz, magnitude: {self.peak_mag} V")
+                        if DEBUG_MODE and random.random() < 0.1:  # Log occasionally to avoid flooding
+                            logger.debug(f"FFT Peak: {self.peak_freq:.1f}Hz, Magnitude: {self.peak_mag:.6f}V")
 
-                # Update display if not in adjusting state and data received
+                # Update display if not in adjusting state
                 if self.current_state != State.ADJUSTING and self.current_state != State.OFF:
                     await self.update_display_with_state()
 
+            except asyncio.CancelledError:
+                logger.info("Data processing task cancelled")
+                break
             except Exception as e:
                 logger.error(f"Error processing data: {e}")
             
@@ -534,8 +570,9 @@ async def update_display(self, line1: str, line2: str) -> None:
             # Initialize display
             await self.initialize_display()
             
-            # Run a short button test
-            await self.test_buttons()
+            # Test button states at startup
+            if DEBUG_MODE:
+                await self.test_buttons()
             
             # Start tasks
             data_task = asyncio.create_task(self.process_data())
@@ -544,18 +581,16 @@ async def update_display(self, line1: str, line2: str) -> None:
             # Initial display update
             await self.update_display("Magnetometer", "Ready")
             await asyncio.sleep(1)
-            
-            # Set initial B-field value and display it
-            self.b_field = 0.0
-            logger.info(f"Initial B-field set to: {self.b_field} T")
-            
             await self.update_display_with_state()
             
-            # Create a heartbeat task
+            # Create a heartbeat task to ensure system is responsive
             heartbeat_task = asyncio.create_task(self._heartbeat())
             
-            # Keep main loop running
-            await asyncio.gather(data_task, pot_task, heartbeat_task)
+            # Keep main tasks running
+            all_tasks = [data_task, pot_task, heartbeat_task]
+            
+            # Wait for tasks to complete (they shouldn't normally)
+            await asyncio.gather(*all_tasks)
             
         except asyncio.CancelledError:
             logger.info("LCD controller tasks cancelled")
@@ -571,7 +606,7 @@ async def update_display(self, line1: str, line2: str) -> None:
             await asyncio.sleep(10)  # Check every 10 seconds
             counter += 1
             if counter % 6 == 0:  # Log every minute
-                logger.info(f"LCD controller heartbeat - State: {self.current_state}, Display: {'ON' if self.display_active else 'OFF'}, DAT: {self.data_acquisition_time}s")
+                logger.info(f"LCD heartbeat - State: {self.current_state}, Display: {'ON' if self.display_active else 'OFF'}, DAT: {self.data_acquisition_time}s")
                 
             # Check if we've been receiving data
             if counter % 30 == 0:  # Every 5 minutes
@@ -582,27 +617,33 @@ async def update_display(self, line1: str, line2: str) -> None:
                         await self.update_display("WARNING", "No data received")
                         await asyncio.sleep(1)
                         await self.update_display_with_state()
-            
+    
     async def cleanup(self) -> None:
-        """Cleanup GPIO and LCD resources (simplified)"""
+        """Cleanup GPIO and LCD resources"""
         try:
-            logger.info("Beginning cleanup process...")
-                
             if self.lcd:
-                logger.info("Clearing LCD...")
-                try:
-                    await asyncio.to_thread(self.lcd.clear)
-                    await asyncio.sleep(0.2)
-                    await asyncio.to_thread(self.lcd.close)
-                    logger.info("LCD cleanup completed")
-                except Exception as e:
-                    logger.error(f"Error during LCD cleanup: {e}")
-                    
+                logger.info("Cleaning up LCD and GPIO resources...")
+                await asyncio.to_thread(self.lcd.clear)
+                await asyncio.sleep(0.1)  # Give it time to complete
+                await asyncio.to_thread(lambda: setattr(self.lcd, 'cursor_pos', (0, 0)))
+                await asyncio.sleep(0.1)  # Give it time to complete
+                await asyncio.to_thread(self.lcd.write_string, "Shutdown         ")
+                await asyncio.sleep(0.1)  # Give it time to complete
+                await asyncio.to_thread(lambda: setattr(self.lcd, 'cursor_pos', (1, 0)))
+                await asyncio.sleep(0.1)  # Give it time to complete
+                await asyncio.to_thread(self.lcd.write_string, "Complete         ")
+                await asyncio.sleep(0.5)  # Give it time to display
+                
+                # Final clear
+                await asyncio.to_thread(self.lcd.clear)
+                await asyncio.sleep(0.1)
+                await asyncio.to_thread(getattr(self.lcd, 'close', lambda: None))
+            
+            # Clean up GPIO
             try:
                 GPIO.cleanup()
-                logger.info("GPIO cleanup completed")
-            except Exception as e:
-                logger.error(f"Error during GPIO cleanup: {e}")
+            except:
+                pass
                 
             logger.info("Cleanup complete")
         except Exception as e:
