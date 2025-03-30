@@ -11,14 +11,13 @@ try:
     # Try with common settings
     lcd = CharLCD(
         i2c_expander='PCF8574',
-        address=0x27,       # Common address, change to 0x3F if needed
+        address=0x27,     
         port=1,
         cols=16,
         rows=2,
         dotsize=8
     )
-    
-    # Clear display and wait
+
     lcd.clear()
     time.sleep(1)
     
@@ -30,8 +29,7 @@ try:
     
     print("Test message sent to LCD")
     print("Press Ctrl+C to exit")
-    
-    # Keep the message displayed
+
     while True:
         time.sleep(1)
         
