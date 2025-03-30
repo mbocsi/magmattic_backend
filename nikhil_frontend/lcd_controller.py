@@ -364,7 +364,7 @@ class LCDController(LCDInterface):
                     # Enter adjusting state if not already in it
                     if self.current_state != State.ADJUSTING and self.display_active:
                         self.current_state = State.ADJUSTING
-                        await self.update_display()
+                        await self.update_display_with_state()
                     
                     # Calculate new data acquisition time using logarithmic scale
                     # Map pot value (0-1023) to data acquisition time (0.1-100s)
@@ -374,7 +374,7 @@ class LCDController(LCDInterface):
                     
                     # Update display in adjusting state
                     if self.current_state == State.ADJUSTING and self.display_active:
-                        await self.update_display()
+                        await self.update_display_with_state()
                 
                 # Check if potentiometer has been stable for a while
                 if (self.current_state == State.ADJUSTING and 
@@ -384,7 +384,7 @@ class LCDController(LCDInterface):
                     
                     # Return to previous state
                     self.current_state = State.B_FIELD
-                    await self.update_display()
+                    await self.update_display_with_state()
                 
                 await asyncio.sleep(0.1)  # Longer delay between polls
                 
@@ -463,7 +463,7 @@ class LCDController(LCDInterface):
                     # Only update display periodically to avoid overwhelming it
                     current_time = time.time()
                     if current_time - self.last_display_update >= self.display_update_interval:
-                        await self.update_display()
+                        await self.update_display_with_state()
                 
                 # Mark this task as done
                 self.q_data.task_done()
@@ -520,7 +520,7 @@ class LCDController(LCDInterface):
                 logger.info("Changed view to B-field mode")
             
             # Update display based on new state
-            await self.update_display()
+            await self.update_display_with_state()
 
     async def toggle_power(self) -> None:
         """Toggle LCD display power on/off"""
@@ -537,7 +537,7 @@ class LCDController(LCDInterface):
                 })
                 self.current_state = State.B_FIELD  # Reset to default state
                 await asyncio.sleep(0.5)
-                await self.update_display()
+                await self.update_display_with_state()
             else:
                 logger.info("Turning display OFF")
                 await self.lcd_queue.put({
@@ -562,29 +562,29 @@ class LCDController(LCDInterface):
 
 
     async def update_display_with_state(self) -> None:
-    """Update display based on current state"""
-    if not self.display_active:
-        return
-        
-    # Determine lines based on current state
-    if self.current_state == State.B_FIELD:
-        b_field_formatted = self.format_magnetic_field(self.b_field)
-        time_str = self.format_time(self.data_acquisition_time)
-        await self.update_display(f"B: {b_field_formatted}", f"Acq Time: {time_str}")
-        
-    elif self.current_state == State.FFT:
-        if not self.fft_data:
-            await self.update_display("FFT View", "No data yet")
-        else:
-            peak_freq, peak_mag = self.calculate_peak(self.fft_data)
-            await self.update_display(f"Peak: {peak_freq:.1f}Hz", f"Mag: {peak_mag:.6f}V")
+        """Update display based on current state"""
+        if not self.display_active:
+            return
             
-    elif self.current_state == State.ADJUSTING:
-        time_str = self.format_time(self.data_acquisition_time)
-        await self.update_display("ADJUSTING", f"Acq Time: {time_str}")
-        
-    else:
-        await self.update_display("Unknown State", f"State: {self.current_state}")
+        # Determine lines based on current state
+        if self.current_state == State.B_FIELD:
+            b_field_formatted = self.format_magnetic_field(self.b_field)
+            time_str = self.format_time(self.data_acquisition_time)
+            await self.update_display(f"B: {b_field_formatted}", f"Acq Time: {time_str}")
+            
+        elif self.current_state == State.FFT:
+            if not self.fft_data:
+                await self.update_display("FFT View", "No data yet")
+            else:
+                peak_freq, peak_mag = self.calculate_peak(self.fft_data)
+                await self.update_display(f"Peak: {peak_freq:.1f}Hz", f"Mag: {peak_mag:.6f}V")
+                
+        elif self.current_state == State.ADJUSTING:
+            time_str = self.format_time(self.data_acquisition_time)
+            await self.update_display("ADJUSTING", f"Acq Time: {time_str}")
+            
+        else:
+            await self.update_display("Unknown State", f"State: {self.current_state}")
         
 
     def calculate_peak(self, fft_data) -> tuple[float, float]:
@@ -658,7 +658,7 @@ class LCDController(LCDInterface):
                                 "line2": "No data received"
                             })
                             await asyncio.sleep(1)
-                            await self.update_display()
+                            await self.update_display_with_state()
         
         except asyncio.CancelledError:
             logger.info("Heartbeat task cancelled")
@@ -698,7 +698,7 @@ class LCDController(LCDInterface):
                 "line2": "Ready"
             })
             await asyncio.sleep(1)
-            await self.update_display()
+            await self.update_display_with_state()
             
             # Keep main loop running until all tasks complete (they shouldn't normally)
             await asyncio.gather(*self.tasks)
