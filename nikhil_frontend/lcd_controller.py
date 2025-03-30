@@ -309,22 +309,22 @@ class LCDController(LCDInterface):
             await self.update_display_with_state()
 
     async def toggle_power(self) -> None:
-    """Toggle LCD display power on/off"""
-    self.display_active = not self.display_active
-    
-    try:
-        if self.display_active:
-            # Instead of backlight method, just clear and show content
-            await asyncio.to_thread(self.lcd.clear)
-            self.current_state = State.B_FIELD  # Reset to default state
-            await self.update_display_with_state()
-        else:
-            # Just clear the display instead of nobacklight
-            await asyncio.to_thread(self.lcd.clear)
-            # Optionally, show a blank display
-            await asyncio.to_thread(self.lcd.write_string, "")
-    except Exception as e:
-        logger.error(f"Error toggling power: {e}")
+        """Toggle LCD display power on/off"""
+        self.display_active = not self.display_active
+        
+        try:
+            if self.display_active:
+                # Instead of backlight method, just clear and show content
+                await asyncio.to_thread(self.lcd.clear)
+                self.current_state = State.B_FIELD  # Reset to default state
+                await self.update_display_with_state()
+            else:
+                # Just clear the display instead of nobacklight
+                await asyncio.to_thread(self.lcd.clear)
+                # Optionally, show a blank display
+                await asyncio.to_thread(self.lcd.write_string, "")
+        except Exception as e:
+            logger.error(f"Error toggling power: {e}")
         
     async def update_display_with_state(self) -> None:
         """Update display based on current state"""
