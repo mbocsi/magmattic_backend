@@ -15,14 +15,12 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-pot_value = 341  # Middle position by default
-simulate_button_presses = True
-button_press_interval = 5  # seconds
+pot_value = 341  # Middle position by default (corresponds to ~1s acquisition time)
+simulate_button_presses = False  # Turn off auto button press simulation
 
 async def generate_test_data(q_data: asyncio.Queue):
     """Generate simulated voltage and FFT data for testing"""
     angle = 0
-    last_button_time = time.time()
     
     try:
         while True:
@@ -56,17 +54,7 @@ async def generate_test_data(q_data: asyncio.Queue):
                 "payload": fft_data
             })
             
-            # Simulate button presses if enabled
-            if simulate_button_presses and time.time() - last_button_time > button_press_interval:
-                if random.random() < 0.3:  # 30% chance to press a button
-                    button = random.choice(["mode", "power"])
-                    logger.info(f"Simulating {button} button press")
-                    if lcd.button_states:  # Ensure LCD is initialized
-                        if button == "mode":
-                            await lcd.handle_button_press(17)  # BUTTON_MODE
-                        else:
-                            await lcd.handle_button_press(22)  # BUTTON_POWER
-                    last_button_time = time.time()
+            # No more automatic button simulation
             
             await asyncio.sleep(0.1)  # Update every 100ms
 
@@ -75,21 +63,7 @@ async def generate_test_data(q_data: asyncio.Queue):
 
 async def mock_read_potentiometer(channel):
     global pot_value
-    
-    # Simulate user adjusting the potentiometer based on time patterns
-    current_time = time.time()
-    sequence_time = current_time % 60
-    
-    if 5 <= sequence_time < 15:
-        # Gradually increase (0.1s to 10s)
-        target = int(min(1023, (sequence_time - 5) * 100))
-        pot_value += (target - pot_value) // 5
-        
-    elif 20 <= sequence_time < 30:
-        # Gradually decrease (10s to 0.1s)
-        target = int(max(0, 1023 - (sequence_time - 20) * 100))
-        pot_value += (target - pot_value) // 5
-    
+    # Simply return the current pot value without automatic adjustments
     return pot_value
 
 async def control_message_handler(q_control: asyncio.Queue):
@@ -100,6 +74,58 @@ async def control_message_handler(q_control: asyncio.Queue):
             logger.info(f"Control message: {control_msg}")
         except Exception as e:
             logger.error(f"Error in control message handler: {e}")
+            await asyncio.sleep(1)
+
+async def handle_user_input():
+    """Handle keyboard input from the user to control the simulation"""
+    global pot_value
+    
+    print("\nInteractive controls:")
+    print("  m - Simulate mode button press")
+    print("  p - Simulate power button press")
+    print("  + - Increase data acquisition time")
+    print("  - - Decrease data acquisition time")
+    print("  q - Quit the test")
+    
+    while True:
+        try:
+            # Use standard input in a non-blocking way
+            if not sys.stdin.isatty():
+                await asyncio.sleep(1)
+                continue
+                
+            cmd = await asyncio.to_thread(sys.stdin.readline)
+            
+            if cmd.strip() == 'm':
+                logger.info("User requested MODE button press")
+                if lcd.button_states:
+                    await lcd.handle_button_press(17)  # BUTTON_MODE
+            
+            elif cmd.strip() == 'p':
+                logger.info("User requested POWER button press")
+                if lcd.button_states:
+                    await lcd.handle_button_press(22)  # BUTTON_POWER
+            
+            elif cmd.strip() == '+':
+                # Increase acquisition time by increasing pot value
+                pot_value = min(1023, pot_value + 50)
+                acq_time = 0.1 * (10 ** (pot_value / 341.0))
+                logger.info(f"User increased pot value to {pot_value} (approx. {acq_time:.2f}s)")
+            
+            elif cmd.strip() == '-':
+                # Decrease acquisition time by decreasing pot value
+                pot_value = max(0, pot_value - 50)
+                acq_time = 0.1 * (10 ** (pot_value / 341.0))
+                logger.info(f"User decreased pot value to {pot_value} (approx. {acq_time:.2f}s)")
+            
+            elif cmd.strip() == 'q':
+                logger.info("User requested to quit")
+                return
+                
+            await asyncio.sleep(0.1)
+            
+        except Exception as e:
+            logger.error(f"Error in user input handler: {e}")
             await asyncio.sleep(1)
 
 async def main():
@@ -118,19 +144,21 @@ async def main():
     # Start tasks
     data_task = asyncio.create_task(generate_test_data(q_data))
     control_task = asyncio.create_task(control_message_handler(q_control))
+    user_input_task = asyncio.create_task(handle_user_input())
     
     # Run the controller
     try:
         logger.info("Starting LCD controller test")
-        logger.info("B1: Toggle between B-field and FFT views")
-        logger.info("B2: Toggle display power on/off")
-        logger.info("POT1: Simulated adjustments to data acquisition time")
+        logger.info("Manual control only - use keyboard inputs to control the test")
         
         # Run the LCD controller
         lcd_task = asyncio.create_task(lcd.run())
         
-        # Run for a set time or until interrupted
-        await asyncio.sleep(300)  # Run for 5 minutes
+        # Wait until user quits or timeout
+        done, pending = await asyncio.wait(
+            [user_input_task, lcd_task],
+            return_when=asyncio.FIRST_COMPLETED
+        )
         
     except KeyboardInterrupt:
         logger.info("Test interrupted by user")
@@ -138,7 +166,7 @@ async def main():
         logger.error(f"Error during test: {e}")
     finally:
         # Cancel all tasks
-        for task in [data_task, control_task]:
+        for task in [data_task, control_task, user_input_task]:
             if task and not task.done():
                 task.cancel()
                 
