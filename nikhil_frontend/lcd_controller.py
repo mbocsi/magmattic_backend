@@ -353,21 +353,29 @@ class LCDController(LCDInterface):
         except Exception as e:
             logger.error(f"Error toggling power: {e}")
         
-    async def update_display_with_state(self) -> None:
-        """Update display based on current state"""
-        if not self.display_active:
-            return
-            
-        try:
-            if self.current_state == State.B_FIELD:
-                await self.display_b_field_view()
-            elif self.current_state == State.FFT:
-                await self.display_fft_view()
-            elif self.current_state == State.ADJUSTING:
-                await self.display_adjusting_view()
-        except Exception as e:
-            logger.error(f"Error updating display: {e}")
-            await self.update_display("Display Error", str(e)[:16])
+    # Modify update_display method to include proper timing
+async def update_display(self, line1: str, line2: str) -> None:
+    """Update both lines of the LCD display with proper timing"""
+    if not self.display_active or not self.lcd:
+        return
+        
+    try:
+        # Clear with adequate delay
+        await asyncio.to_thread(self.lcd.clear)
+        await asyncio.sleep(0.05)  # Wait for clear to finish
+        
+        # Write first line
+        await asyncio.to_thread(self.lcd.write_string, line1[:LCD_WIDTH])
+        await asyncio.sleep(0.02)  # Short delay between operations
+        
+        # Position cursor for second line
+        await asyncio.to_thread(lambda: setattr(self.lcd, 'cursor_pos', (1, 0)))
+        await asyncio.sleep(0.02)  # Short delay
+        
+        # Write second line
+        await asyncio.to_thread(self.lcd.write_string, line2[:LCD_WIDTH])
+    except Exception as e:
+        logger.error(f"Display update failed: {e}")
 
     async def display_b_field_view(self) -> None:
         """Show B-field view with magnetic field reading and acquisition time"""
