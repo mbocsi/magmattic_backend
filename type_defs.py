@@ -13,6 +13,7 @@ class CalculationStatus(TypedDict):
     Ntot: int
     window: Window
     rolling_fft: bool
+    min_snr: int
 
 
 class VoltageMessage(TypedDict):

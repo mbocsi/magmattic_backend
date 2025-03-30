@@ -47,6 +47,7 @@ class CalculationComponent(AppComponent):
         self.coil_props = parse_coil_props(coil_props)
         self.motor_theta = 0
         self.theta_init = 0
+        self.min_snr = 5
 
     def calc_fft(self, data, T) -> tuple[np.ndarray, np.ndarray]:
         logger.debug(f"sending fft to queue: {data} {T}")
@@ -113,8 +114,10 @@ class CalculationComponent(AppComponent):
         peak_phases = phase[indices, :]
         return np.hstack((peak_mags, peak_phases[:, [1]]))
 
-    def noise_floor(self, magnitude: np.ndarray) -> float:
-        return np.sqrt(np.sum(magnitude**2)) / magnitude.shape[0]
+    def noise_floor(self, magnitude: np.ndarray, noise_perc=0.9) -> float:
+        values = int(magnitude.shape[0] * 0.9)
+        lowest_values = np.sort(magnitude)[:values]
+        return np.sqrt(np.sum(lowest_values**2) / lowest_values.shape[0])
 
     def calc_bfield(self, volts: float, omega: float, theta: float) -> np.ndarray:
         vector = np.array([-np.cos(theta), np.sin(theta)])
@@ -131,8 +134,7 @@ class CalculationComponent(AppComponent):
 
         magnitude, phase = self.calc_fft(self.voltage_data, T)
         voltage_amplitude, theta, omega = self.calc_vampl(magnitude, phase)
-        peaks = self.peaks(magnitude, phase)
-        logger.info(peaks)
+        peaks = self.peaks(magnitude, phase, min_snr=self.min_snr)
         bfield = self.calc_bfield(voltage_amplitude, omega, theta)
 
         # Use run_coroutine_threadsafe() to ensure safe queue insertion
@@ -163,6 +165,20 @@ class CalculationComponent(AppComponent):
         loop.call_soon_threadsafe(
             self.pub_queue.put_nowait,
             {"topic": "bfield/data", "payload": bfield.tolist()},
+        )
+        loop.call_soon_threadsafe(
+            self.pub_queue.put_nowait,
+            {
+                "topic": "signals/data",
+                "payload": [
+                    {
+                        "freq": peak[0],
+                        "mag": peak[1],
+                        "phase": peak[2],
+                    }
+                    for peak in peaks.tolist()
+                ],
+            },
         )
 
         if not self.rolling_fft:
@@ -220,6 +236,7 @@ class CalculationComponent(AppComponent):
             "Ntot": self.Ntot,
             "rolling_fft": self.rolling_fft,
             "window": self.window,
+            "min_snr": self.min_snr,
         }
 
     async def run(self):
