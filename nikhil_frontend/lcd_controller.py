@@ -552,7 +552,7 @@ class LCDController(LCDInterface):
     async def update_display(self, line1: str, line2: str) -> None:
         """Update both lines of the LCD display"""
         if not self.display_active or not self.lcd:
-        return
+            return
         
         await self.lcd_queue.put({
         "type": "update",
