@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import time
+import random  # Added import for random module
 from collections import deque
 import RPi.GPIO as GPIO
 from RPLCD.i2c import CharLCD
@@ -548,7 +549,7 @@ class LCDController(LCDInterface):
                     # Calculate peak
                     if self.fft_data:
                         self.peak_freq, self.peak_mag = self.calculate_peak(self.fft_data)
-                        if DEBUG_MODE and random.random() < 0.1:  # Log occasionally to avoid flooding
+                        if DEBUG_MODE:  # Removed random check to avoid the error
                             logger.debug(f"FFT Peak: {self.peak_freq:.1f}Hz, Magnitude: {self.peak_mag:.6f}V")
 
                 # Update display if not in adjusting state
