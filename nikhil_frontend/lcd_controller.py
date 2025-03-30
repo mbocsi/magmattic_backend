@@ -549,17 +549,16 @@ class LCDController(LCDInterface):
         except Exception as e:
             logger.error(f"Error toggling power: {e}")
 
-
     async def update_display(self, line1: str, line2: str) -> None:
-    """Update both lines of the LCD display"""
-    if not self.display_active or not self.lcd:
+        """Update both lines of the LCD display"""
+        if not self.display_active or not self.lcd:
         return
         
-    await self.lcd_queue.put({
+        await self.lcd_queue.put({
         "type": "update",
         "line1": line1,
         "line2": line2
-    })
+        })
 
     def calculate_peak(self, fft_data) -> tuple[float, float]:
         """Calculate the peak frequency and magnitude from FFT data"""
