@@ -1,57 +1,29 @@
 from abc import ABC, abstractmethod
-import asyncio
 
 class LCDInterface(ABC):
-    """
-    Abstract base class for LCD display interfaces.
-    """
+    """Base interface for LCD display controllers"""
     
     @abstractmethod
-    async def run(self) -> None:
-        """Main run loop for the LCD interface"""
+    async def initialize_display(self):
+        """Set up the LCD display and GPIOs"""
         pass
     
     @abstractmethod
-    async def initialize_display(self) -> None:
-        """Initialize the LCD display and GPIO pins"""
+    def update_display(self, line1, line2):
+        """Update the LCD display with text"""
         pass
     
     @abstractmethod
-    async def handle_button_press(self, button: int) -> None:
-        """Handle button press events from GPIO"""
+    async def process_data(self):
+        """Process incoming data"""
         pass
     
     @abstractmethod
-    async def toggle_power(self) -> None:
-        """Toggle display power on/off"""
+    async def cleanup(self):
+        """Clean up resources"""
         pass
     
     @abstractmethod
-    async def update_display(self, line1: str, line2: str) -> None:
-        """Update both lines of the LCD display"""
-        pass
-    
-    @abstractmethod
-    async def update_display_with_state(self) -> None:
-        """Update display based on current state"""
-        pass
-    
-    @abstractmethod
-    async def process_data(self) -> None:
-        """Process incoming data from the queue"""
-        pass
-    
-    @abstractmethod
-    async def poll_potentiometers(self) -> None:
-        """Poll potentiometer values and handle changes"""
-        pass
-    
-    @abstractmethod
-    async def read_potentiometer(self, channel: int) -> int:
-        """Read analog value from potentiometer"""
-        pass
-    
-    @abstractmethod
-    async def cleanup(self) -> None:
-        """Cleanup GPIO and LCD resources"""
+    async def run(self):
+        """Main run loop"""
         pass
