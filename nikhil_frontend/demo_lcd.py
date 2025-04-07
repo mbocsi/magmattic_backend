@@ -3,8 +3,8 @@ from RPLCD.i2c import CharLCD
 import time
 import RPi.GPIO as GPIO
 import sys
-import piplates.ADCplate as ADC
-from piplates.ADCplate import *  # type: ignore
+sys.path.append('/home/magmattic/Documents/magmattic_backend')
+import pi_plates.ADCplate as ADC
 
 # LCD Configuration
 lcd = CharLCD(
@@ -27,16 +27,11 @@ def main():
             # Clear LCD
             lcd.clear()
             
-            # Write potentiometer value
+            # Write potentiometer value as a linear counter
             lcd.cursor_pos = (0, 0)
-            lcd.write_string(f"POT Value: {pot_value}")
+            lcd.write_string(f"Counter: {pot_value}")
             
-            # Optional: show percentage
-            percentage = (pot_value / 1023) * 100
-            lcd.cursor_pos = (1, 0)
-            lcd.write_string(f"Percent: {percentage:.1f}%")
-            
-            # Small delay
+            # Small delay to prevent excessive updates
             time.sleep(0.1)
     
     except KeyboardInterrupt:
