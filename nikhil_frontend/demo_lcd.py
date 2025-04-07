@@ -1,10 +1,12 @@
-#!/usr/bin/env python3
-from RPLCD.i2c import CharLCD
+import spidev
 import time
 import RPi.GPIO as GPIO
-import sys
-sys.path.append('/home/magmattic/Documents/magmattic_backend/env/lib/python3.11/site-packages')
-import piplates.ADCplate as ADC
+from RPLCD.i2c import CharLCD
+
+# Initialize SPI
+spi = spidev.SpiDev()
+spi.open(0, 0)  # Open SPI bus 0, device 0
+spi.max_speed_hz = 1000000
 
 # LCD Configuration
 lcd = CharLCD(
@@ -16,29 +18,32 @@ lcd = CharLCD(
     dotsize=8
 )
 
+def read_adc(channel):
+    # Read MCP3008 ADC
+    adc = spi.xfer2([1, (8 + channel) << 4, 0])
+    data = ((adc[1] & 3) << 8) + adc[2]
+    return data
+
 def main():
     try:
-        lcd.clear()
-        
         while True:
-            # Read potentiometer value from channel 0
-            pot_value = ADC.getADC(0, 0)  # (board, channel)
+            # Read potentiometer on channel 0
+            pot_value = read_adc(0)
             
             # Clear LCD
             lcd.clear()
             
-            # Write potentiometer value as a linear counter
+            # Display value
             lcd.cursor_pos = (0, 0)
-            lcd.write_string(f"Counter: {pot_value}")
+            lcd.write_string(f"POT: {pot_value}")
             
-            # Small delay to prevent excessive updates
             time.sleep(0.1)
     
     except KeyboardInterrupt:
-        print("Test stopped by user")
+        print("Test stopped")
     finally:
         lcd.clear()
-        GPIO.cleanup()
+        spi.close()
 
 if __name__ == "__main__":
     main()
