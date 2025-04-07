@@ -1,48 +1,40 @@
 import piplates.ADCplate as ADC
-import time
 from RPLCD.i2c import CharLCD
+from time import sleep
+import RPi.GPIO as GPIO
 
-# LCD Configuration
-lcd = CharLCD(
-    i2c_expander='PCF8574',
-    address=0x27,     
-    port=1,
-    cols=16,
-    rows=2,
-    dotsize=8
-)
+# Initialize LCD
+lcd = CharLCD(i2c_expander='PCF8574', address=0x27, port=1, 
+             cols=16, rows=2, dotsize=8)
 
-def read_adc(channel, addr=0):
-    """Read ADC value from Pi-Plates ADC"""
-    try:
-        return ADC.getADC(addr, channel)
-    except Exception as e:
-        print(f"ADC reading error: {e}")
-        return 0
+# Initialize pot value
+pot_value = 0
 
-def main():
-    try:
-        lcd.clear()
-        print("ADC Potentiometer Test Started")
+# Display the potentiometer value
+def update_display(value):
+    lcd.clear()
+    lcd.cursor_pos = (0, 0)
+    lcd.write_string("Pot Value:")
+    lcd.cursor_pos = (1, 0)
+    lcd.write_string(f"{value}")
+
+try:
+    while True:
+        # Read potentiometer value from channel 0
+        pot_value = ADC.getADC(0, 0)  # (board, channel)
         
-        while True:
-            # Read potentiometer on channel 0
-            pot_value = read_adc(0)
-            
-            # Clear LCD and display value
-            lcd.clear()
-            lcd.cursor_pos = (0, 0)
-            lcd.write_string(f"POT: {pot_value}")
-            
-            # Also print to terminal for debugging
-            print(f"Potentiometer Value: {pot_value}")
-            
-            time.sleep(0.1)
-    
-    except KeyboardInterrupt:
-        print("Test stopped")
-    finally:
-        lcd.clear()
-
-if __name__ == "__main__":
-    main()
+        # Update display
+        update_display(pot_value)
+        
+        # Print to console for debugging
+        print(f"Potentiometer Value: {pot_value}")
+        
+        # Short delay
+        sleep(0.1)
+        
+except KeyboardInterrupt:
+    print("Cleaning up!")
+    lcd.clear()
+finally:
+    lcd.clear()
+    # No GPIO cleanup needed for ADC reading
