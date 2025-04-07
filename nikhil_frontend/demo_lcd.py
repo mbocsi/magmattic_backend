@@ -1,82 +1,83 @@
 #!/usr/bin/env python3
+import RPi.GPIO as GPIO
 import time
 from RPLCD.i2c import CharLCD
-import RPi.GPIO as GPIO
-
-# Clean up any existing GPIO setup
-try:
-    GPIO.cleanup()
-except:
-    pass
-
-# Set up GPIO
-GPIO.setmode(GPIO.BCM)
-
-# Simulate ADC reading with button presses
-counter = 0
-GPIO.setup(17, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # UP button
-GPIO.setup(22, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # DOWN button
+import piplates.ADCplate as ADC
 
 # Initialize LCD
-try:
-    lcd = CharLCD(
-        i2c_expander='PCF8574',
-        address=0x27,     
-        port=1,
-        cols=16,
-        rows=2,
-        dotsize=8
-    )
-    lcd.clear()
-except Exception as e:
-    print(f"LCD Error: {e}")
-    exit()
+lcd = CharLCD(i2c_expander='PCF8574', address=0x27, port=1, 
+             cols=16, rows=2, dotsize=8)
 
-# Update display
-def update_display():
+# Set up GPIO (for exit button if needed)
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(17, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # Use as exit button
+
+# Initialize variables
+pot_value = 0
+last_pot_value = -1  # Force initial update
+counter = 0
+
+# ADC settings
+ADC_ADDR = 0        # Pi-Plates ADC board address (usually 0)
+ADC_CHANNEL = 0     # Channel for POT1 (D0)
+
+try:
+    # Initial display
     lcd.clear()
     lcd.cursor_pos = (0, 0)
-    lcd.write_string("POT Counter")
+    lcd.write_string("POT Test Running")
     lcd.cursor_pos = (1, 0)
-    lcd.write_string(f"Value: {counter}")
-    print(f"Counter: {counter}")
-
-print("Potentiometer simulation")
-print("Button 17: Increase counter")
-print("Button 22: Decrease counter")
-update_display()
-
-try:
-    # Track previous states
-    prev_state_17 = GPIO.input(17)
-    prev_state_22 = GPIO.input(22)
+    lcd.write_string("Value: 0")
+    print("Potentiometer test running - Ctrl+C to exit")
     
     while True:
-        # Read current states
-        state_17 = GPIO.input(17)
-        state_22 = GPIO.input(22)
-        
-        # Button 17 pressed - increase counter
-        if prev_state_17 == GPIO.HIGH and state_17 == GPIO.LOW:
-            counter = min(1023, counter + 10)
-            update_display()
-            time.sleep(0.1)  # Debounce
+        # Read potentiometer value from ADC
+        try:
+            # Get raw ADC reading (0-5V mapped to 0-4095)
+            raw_value = ADC.getADC(ADC_ADDR, ADC_CHANNEL)
             
-        # Button 22 pressed - decrease counter
-        if prev_state_22 == GPIO.HIGH and state_22 == GPIO.LOW:
-            counter = max(0, counter - 10)
-            update_display()
-            time.sleep(0.1)  # Debounce
+            # Map to 0-1023 range
+            pot_value = int(raw_value * 1023 / 4095)
+            
+            # Constrain to 0-1023 range
+            pot_value = max(0, min(1023, pot_value))
+            
+            # Update counter based on pot value (linear mapping)
+            counter = pot_value
+            
+        except Exception as e:
+            print(f"ADC reading error: {e}")
+            # If ADC fails, increment counter slowly for testing
+            counter = (counter + 1) % 1024
+            time.sleep(0.2)
         
-        # Update previous states
-        prev_state_17 = state_17
-        prev_state_22 = state_22
+        # Display counter value if changed
+        if counter != last_pot_value:
+            # Update LCD
+            lcd.cursor_pos = (1, 0)
+            lcd.write_string(f"Value: {counter:4d}    ")
+            
+            # Print to console
+            print(f"Potentiometer value: {counter}")
+            
+            last_pot_value = counter
         
-        time.sleep(0.05)
+        # Check if exit button pressed
+        if GPIO.input(17) == GPIO.LOW:
+            print("Exit button pressed - ending test")
+            break
+            
+        # Short delay
+        time.sleep(0.1)
         
 except KeyboardInterrupt:
-    print("\nTest stopped by user")
+    print("\nPotentiometer test stopped by user")
 finally:
+    # Clean up
+    lcd.clear()
+    lcd.cursor_pos = (0, 0)
+    lcd.write_string("Test Complete")
+    time.sleep(1)
     lcd.clear()
     GPIO.cleanup()
-    print("Cleanup complete")
+    print("Test complete, GPIO cleaned up")
