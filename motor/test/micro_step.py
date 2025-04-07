@@ -1,7 +1,7 @@
 import RPi.GPIO as GPIO  # type: ignore
 import time
 
-LED_PIN = 1  # GPIO1 (BCM numbering) – double-check your wiring!
+LED_PIN = 13  # GPIO1 (BCM numbering) – double-check your wiring!
 
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(LED_PIN, GPIO.OUT)
