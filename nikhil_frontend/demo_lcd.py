@@ -1,58 +1,52 @@
-from RPLCD.i2c import CharLCD
-from time import sleep
+#!/usr/bin/env python3
 import RPi.GPIO as GPIO
+import time
 
-# Initialize LCD
-lcd = CharLCD(i2c_expander='PCF8574', address=0x27, port=1, 
-             cols=16, rows=2, dotsize=8)
+# Clean up any existing GPIO setup
+try:
+    GPIO.cleanup()
+except:
+    pass
 
-# Set up button
-BUTTON_PIN = 17
+# Set up GPIO
 GPIO.setmode(GPIO.BCM)
-GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.setup(17, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # Mode button
+GPIO.setup(22, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # Power button
 
-# Initialize counter
-counter = 0
-last_button_state = GPIO.input(BUTTON_PIN)
-last_counter = -1  # Force initial display update
-
-# Display the counter (only when it changes)
-def update_display(count):
-    lcd.clear()
-    lcd.cursor_pos = (0, 0)
-    lcd.write_string("Button counter:")
-    lcd.cursor_pos = (1, 0)
-    lcd.write_string(f"Count: {count}")
+print("Button test running - press buttons (Ctrl+C to exit)")
+print("Button 17 (MODE) and Button 22 (POWER) will be detected")
 
 try:
-    # Initial display
-    update_display(counter)
+    # Track previous states for edge detection
+    prev_state_17 = GPIO.input(17)
+    prev_state_22 = GPIO.input(22)
     
     while True:
-        # Check button state
-        button_state = GPIO.input(BUTTON_PIN)
+        # Read current states
+        state_17 = GPIO.input(17)
+        state_22 = GPIO.input(22)
         
-        # Button press detected (transition from HIGH to LOW)
-        if button_state == GPIO.LOW and last_button_state == GPIO.HIGH:
-            counter += 1
-            print(f"Button pressed! Count: {counter}")  # Debug output
+        # Check for button press (HIGH to LOW transition with pull-up)
+        if prev_state_17 == GPIO.HIGH and state_17 == GPIO.LOW:
+            print("BUTTON 17 (MODE) PRESSED!")
             
-            # Update display only when counter changes
-            update_display(counter)
-            
-            # Wait for button release to avoid multiple counts
-            while GPIO.input(BUTTON_PIN) == GPIO.LOW:
-                sleep(0.01)
-                
-            # Add additional debounce delay
-            sleep(0.2)
+        if prev_state_22 == GPIO.HIGH and state_22 == GPIO.LOW:
+            print("BUTTON 22 (POWER) PRESSED!")
         
-        last_button_state = button_state
-        sleep(0.01)  # Short delay in main loop
+        # Print raw states periodically
+        if int(time.time()) % 5 == 0:
+            print(f"Raw states - B17: {state_17}, B22: {state_22}")
+            time.sleep(1)  # Avoid repeated printing
+            
+        # Update previous states
+        prev_state_17 = state_17
+        prev_state_22 = state_22
+        
+        # Short delay
+        time.sleep(0.05)
         
 except KeyboardInterrupt:
-    print("Cleaning up!")
-    lcd.clear()
+    print("\nButton test stopped by user")
 finally:
-    lcd.clear()
     GPIO.cleanup()
+    print("GPIO cleaned up")
