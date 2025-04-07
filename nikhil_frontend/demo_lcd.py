@@ -1,40 +1,51 @@
-import piplates.ADCplate as ADC
+import time
+import board
+import busio
+import adafruit_ads1x15.ads1115 as ADS
+from adafruit_ads1x15.analog_in import AnalogIn
 from RPLCD.i2c import CharLCD
-from time import sleep
-import RPi.GPIO as GPIO
+
+# Initialize I2C bus
+i2c = busio.I2C(board.SCL, board.SDA)
+
+# Initialize ADS1115
+ads = ADS.ADS1115(i2c)
 
 # Initialize LCD
-lcd = CharLCD(i2c_expander='PCF8574', address=0x27, port=1, 
-             cols=16, rows=2, dotsize=8)
+lcd = CharLCD(
+    i2c_expander='PCF8574',
+    address=0x27,     
+    port=1,
+    cols=16,
+    rows=2,
+    dotsize=8
+)
 
-# Initialize pot value
-pot_value = 0
+def main():
+    try:
+        # Use channel 0 of ADS1115
+        channel = AnalogIn(ads, ADS.P0)
+        
+        while True:
+            # Read raw value
+            raw_value = channel.value
+            
+            # Clear LCD
+            lcd.clear()
+            
+            # Display value
+            lcd.cursor_pos = (0, 0)
+            lcd.write_string(f"POT: {raw_value}")
+            
+            # Print to console
+            print(f"Potentiometer Value: {raw_value}")
+            
+            time.sleep(0.1)
+    
+    except KeyboardInterrupt:
+        print("Test stopped")
+    finally:
+        lcd.clear()
 
-# Display the potentiometer value
-def update_display(value):
-    lcd.clear()
-    lcd.cursor_pos = (0, 0)
-    lcd.write_string("Pot Value:")
-    lcd.cursor_pos = (1, 0)
-    lcd.write_string(f"{value}")
-
-try:
-    while True:
-        # Read potentiometer value from channel 0
-        pot_value = ADC.getADC(0, 0)  # (board, channel)
-        
-        # Update display
-        update_display(pot_value)
-        
-        # Print to console for debugging
-        print(f"Potentiometer Value: {pot_value}")
-        
-        # Short delay
-        sleep(0.1)
-        
-except KeyboardInterrupt:
-    print("Cleaning up!")
-    lcd.clear()
-finally:
-    lcd.clear()
-    # No GPIO cleanup needed for ADC reading
+if __name__ == "__main__":
+    main()
