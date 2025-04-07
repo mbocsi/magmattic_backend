@@ -1,51 +1,90 @@
+#!/usr/bin/env python3
+import RPi.GPIO as GPIO
 import time
-import board
-import busio
-import adafruit_ads1x15.ads1115 as ADS
-from adafruit_ads1x15.analog_in import AnalogIn
 from RPLCD.i2c import CharLCD
 
-# Initialize I2C bus
-i2c = busio.I2C(board.SCL, board.SDA)
+# Initialize counter
+counter = 0
 
-# Initialize ADS1115
-ads = ADS.ADS1115(i2c)
+# Clean up any existing GPIO setup
+try:
+    GPIO.cleanup()
+except:
+    pass
+
+# Set up GPIO
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(17, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # UP button
+GPIO.setup(22, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # DOWN button
 
 # Initialize LCD
-lcd = CharLCD(
-    i2c_expander='PCF8574',
-    address=0x27,     
-    port=1,
-    cols=16,
-    rows=2,
-    dotsize=8
-)
+try:
+    lcd = CharLCD(
+        i2c_expander='PCF8574',
+        address=0x27,     
+        port=1,
+        cols=16,
+        rows=2,
+        dotsize=8
+    )
+    lcd.clear()
+    lcd_available = True
+except Exception as e:
+    print(f"LCD Error: {e}")
+    lcd_available = False
 
-def main():
-    try:
-        # Use channel 0 of ADS1115
-        channel = AnalogIn(ads, ADS.P0)
-        
-        while True:
-            # Read raw value
-            raw_value = channel.value
-            
-            # Clear LCD
-            lcd.clear()
-            
-            # Display value
-            lcd.cursor_pos = (0, 0)
-            lcd.write_string(f"POT: {raw_value}")
-            
-            # Print to console
-            print(f"Potentiometer Value: {raw_value}")
-            
-            time.sleep(0.1)
-    
-    except KeyboardInterrupt:
-        print("Test stopped")
-    finally:
+# Display the counter
+def update_display():
+    print(f"Counter: {counter}")
+    if lcd_available:
         lcd.clear()
+        lcd.cursor_pos = (0, 0)
+        lcd.write_string("Button Test")
+        lcd.cursor_pos = (1, 0)
+        lcd.write_string(f"Count: {counter}")
 
-if __name__ == "__main__":
-    main()
+print("Button counter test - press buttons")
+print("Button 17: Increase counter")
+print("Button 22: Decrease counter")
+print("Ctrl+C to exit")
+
+update_display()
+
+try:
+    # Track previous states for edge detection
+    prev_state_17 = GPIO.input(17)
+    prev_state_22 = GPIO.input(22)
+    
+    while True:
+        # Read current states
+        state_17 = GPIO.input(17)
+        state_22 = GPIO.input(22)
+        
+        # Button 17 pressed (HIGH to LOW transition with pull-up)
+        if prev_state_17 == GPIO.HIGH and state_17 == GPIO.LOW:
+            counter += 1
+            print("BUTTON 17 PRESSED - COUNT UP")
+            update_display()
+            time.sleep(0.2)  # Debounce
+            
+        # Button 22 pressed (HIGH to LOW transition with pull-up)
+        if prev_state_22 == GPIO.HIGH and state_22 == GPIO.LOW:
+            counter -= 1
+            print("BUTTON 22 PRESSED - COUNT DOWN")
+            update_display()
+            time.sleep(0.2)  # Debounce
+        
+        # Update previous states
+        prev_state_17 = state_17
+        prev_state_22 = state_22
+        
+        # Short delay
+        time.sleep(0.05)
+        
+except KeyboardInterrupt:
+    print("\nButton test stopped by user")
+finally:
+    if lcd_available:
+        lcd.clear()
+    GPIO.cleanup()
+    print("Cleanup complete")
