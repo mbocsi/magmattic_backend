@@ -3,9 +3,9 @@ from RPLCD.i2c import CharLCD
 import time
 import RPi.GPIO as GPIO
 import sys
+sys.path.append('/home/magmattic/Documents/magmattic_backend')
 import piplates.ADCplate as ADC
 from piplates.ADCplate import *  # type: ignore
-
 # LCD Configuration
 lcd = CharLCD(
     i2c_expander='PCF8574',
