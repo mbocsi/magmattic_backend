@@ -5,7 +5,6 @@ import RPi.GPIO as GPIO
 import sys
 sys.path.append('/home/magmattic/Documents/magmattic_backend/env/lib/python3.11/site-packages')
 import piplates.ADCplate as ADC
-from piplates.ADCplate import *  # type: ignore
 
 # LCD Configuration
 lcd = CharLCD(
