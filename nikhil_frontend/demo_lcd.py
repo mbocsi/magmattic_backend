@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 from RPLCD.i2c import CharLCD
-import piplates.ADCplate as ADC
 import time
 import RPi.GPIO as GPIO
+import sys
+sys.path.append('/home/magmattic/Documents/magmattic_backend')
+import pi_plates.ADCplate as ADC
 
 # LCD Configuration
 lcd = CharLCD(
