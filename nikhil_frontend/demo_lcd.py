@@ -1,12 +1,6 @@
-import spidev
+import piplates.ADCplate as ADC
 import time
-import RPi.GPIO as GPIO
 from RPLCD.i2c import CharLCD
-
-# Initialize SPI
-spi = spidev.SpiDev()
-spi.open(0, 0)  # Open SPI bus 0, device 0
-spi.max_speed_hz = 1000000
 
 # LCD Configuration
 lcd = CharLCD(
@@ -18,24 +12,30 @@ lcd = CharLCD(
     dotsize=8
 )
 
-def read_adc(channel):
-    # Read MCP3008 ADC
-    adc = spi.xfer2([1, (8 + channel) << 4, 0])
-    data = ((adc[1] & 3) << 8) + adc[2]
-    return data
+def read_adc(channel, addr=0):
+    """Read ADC value from Pi-Plates ADC"""
+    try:
+        return ADC.getADC(addr, channel)
+    except Exception as e:
+        print(f"ADC reading error: {e}")
+        return 0
 
 def main():
     try:
+        lcd.clear()
+        print("ADC Potentiometer Test Started")
+        
         while True:
             # Read potentiometer on channel 0
             pot_value = read_adc(0)
             
-            # Clear LCD
+            # Clear LCD and display value
             lcd.clear()
-            
-            # Display value
             lcd.cursor_pos = (0, 0)
             lcd.write_string(f"POT: {pot_value}")
+            
+            # Also print to terminal for debugging
+            print(f"Potentiometer Value: {pot_value}")
             
             time.sleep(0.1)
     
@@ -43,7 +43,6 @@ def main():
         print("Test stopped")
     finally:
         lcd.clear()
-        spi.close()
 
 if __name__ == "__main__":
     main()
