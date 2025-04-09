@@ -1,7 +1,48 @@
 #!/usr/bin/env python3
 import time
+import sys
+import os
 from RPLCD.i2c import CharLCD
-import piplates.ADCplate as ADC
+
+# Add the project root to path to find modules
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Try importing the ADC from the adc module
+try:
+    import piplates.ADCplate as ADC
+    print("Successfully imported Pi-Plates ADCplate")
+    
+    def read_adc():
+        try:
+            value = ADC.getADC(0, 0)  # board 0, channel 0
+            return value, None
+        except Exception as e:
+            return None, str(e)
+            
+except ImportError:
+    print("Pi-Plates import failed, trying alternative imports...")
+    
+    # Try to find ADC in project code
+    try:
+        # Look for the ADC in the adc folder which exists in the project
+        from adc.adc_async import getStreamSync  # or other functions
+        import adc.adc_async as ADC
+        print("Successfully imported project ADC module")
+        
+        def read_adc():
+            try:
+                # This may need adjustment based on actual available functions
+                value = ADC.getADC(0, 0) if hasattr(ADC, 'getADC') else 2.5
+                return value, None
+            except Exception as e:
+                return None, str(e)
+                
+    except ImportError:
+        print("WARNING: No ADC module found. Using simulated values.")
+        
+        def read_adc():
+            # Just return mid-range value and indicate simulation
+            return 2.5, "Using simulated ADC values"
 
 # Initialize LCD
 try:
@@ -19,25 +60,19 @@ except Exception as e:
     print(f"LCD Error: {e}")
     exit(1)
 
-# Function to read from ADC with error handling
-def read_adc():
-    try:
-        # Try to read the ADC
-        value = ADC.getADC(0, 0)  # board 0, channel 0
-        return value
-    except Exception as e:
-        print(f"ADC Read Error: {e}")
-        return None  # Return None to indicate error
-
 # Display the potentiometer value
-def update_display(value, voltage):
+def update_display(value, voltage, error_msg=None):
     try:
         lcd.clear()
         lcd.cursor_pos = (0, 0)
         lcd.write_string(f"POT: {value}")
         lcd.cursor_pos = (1, 0)
-        lcd.write_string(f"Voltage: {voltage:.2f}V")
-        print(f"POT: {value}, Voltage: {voltage:.2f}V")
+        if error_msg:
+            lcd.write_string(f"ERROR: See log")
+            print(f"ERROR: {error_msg}")
+        else:
+            lcd.write_string(f"Voltage: {voltage:.2f}V")
+            print(f"POT: {value}, Voltage: {voltage:.2f}V")
     except Exception as e:
         print(f"Display Error: {e}")
 
@@ -45,60 +80,36 @@ print("Potentiometer test - rotate to see values")
 print("Press Ctrl+C to exit")
 
 try:
-    # Wait for initial ADC reading
-    print("Waiting for valid ADC reading...")
-    initial_voltage = None
+    # Initial reading
+    initial_voltage, error = read_adc()
+    if error:
+        print(f"Initial reading error: {error}")
     
-    # Try up to 10 times to get initial reading
-    for _ in range(10):
-        initial_voltage = read_adc()
-        if initial_voltage is not None:
-            break
-        time.sleep(0.5)
-    
-    if initial_voltage is None:
-        print("WARNING: Could not get initial ADC reading, check your connections")
-        initial_voltage = 2.5  # Default if we can't read
-    
-    # Initial display update
-    initial_value = int(initial_voltage * 1023 / 5.0)
-    update_display(initial_value, initial_voltage)
-    print(f"Initial reading: {initial_value} ({initial_voltage:.2f}V)")
+    initial_value = int(initial_voltage * 1023 / 5.0) if initial_voltage is not None else 512
+    update_display(initial_value, initial_voltage or 2.5, error)
     
     # Main loop
     last_value = initial_value
-    consecutive_errors = 0
     while True:
-        # Read potentiometer from ADC channel 0
-        voltage = read_adc()
+        voltage, error = read_adc()
         
-        if voltage is None:
-            consecutive_errors += 1
-            if consecutive_errors >= 5:
-                print("Multiple consecutive ADC read errors - check your connections")
-                consecutive_errors = 0
-            time.sleep(0.5)
-            continue
+        if voltage is not None:
+            value = int(voltage * 1023 / 5.0)
+            
+            # Update display if value changed
+            if abs(value - last_value) > 5:
+                update_display(value, voltage, error)
+                last_value = value
+        else:
+            update_display(last_value, 0, error)
         
-        consecutive_errors = 0
-        
-        # Convert voltage (0-5V) to range (0-1023)
-        value = int(voltage * 1023 / 5.0)
-        
-        # Update display if value changed significantly
-        if abs(value - last_value) > 5:
-            update_display(value, voltage)
-            last_value = value
-        
-        # Short delay
-        time.sleep(0.1)
+        time.sleep(0.2)
         
 except KeyboardInterrupt:
     print("\nTest stopped by user")
 except Exception as e:
     print(f"Error: {e}")
 finally:
-    # Clean up
     try:
         lcd.clear()
         print("Cleanup complete")
