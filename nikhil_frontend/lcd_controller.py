@@ -5,6 +5,7 @@ from collections import deque
 import RPi.GPIO as GPIO
 from RPLCD.i2c import CharLCD
 from lcd_interface import LCDInterface
+import piplates.ADCplate as ADC
 
 logger = logging.getLogger(__name__ + ".LCDController")
 
@@ -57,7 +58,7 @@ class LCDController(LCDInterface):
         self.last_voltage = 0.0
         self.b_field = 0.0  # Magnetic field in Tesla
         self.data_acquisition_time = DEFAULT_DAT
-        self.last_pot_value = 341  # Middle position by default
+        self.last_pot_value = 500  # Middle position by default
         self.peak_freq = 0.0
         self.peak_mag = 0.0
         
@@ -97,6 +98,19 @@ class LCDController(LCDInterface):
             self.lcd.clear()
             
             logger.info("LCD initialized successfully")
+            
+            # Get initial potentiometer reading for DAT
+            try:
+                raw_value = ADC.getADC(0, POT_DAT)
+                pot_value = min(1023, int(raw_value * 1023 / 5.0))
+                self.last_pot_value = pot_value
+                
+                # Set initial DAT based on potentiometer position
+                self.data_acquisition_time = MIN_DAT * (10 ** (pot_value / 341.0))
+                self.data_acquisition_time = round(self.data_acquisition_time, 2)
+                logger.info(f"Initial potentiometer value: {pot_value}, DAT: {self.data_acquisition_time}s")
+            except Exception as e:
+                logger.error(f"Failed to read initial potentiometer value: {e}")
             
             # Show welcome message
             await self.update_display("Magnetometer", "Initializing...")
@@ -183,6 +197,61 @@ class LCDController(LCDInterface):
         except Exception as e:
             logger.error(f"Error polling buttons: {e}")
 
+    async def poll_potentiometer(self) -> None:
+        """Poll potentiometer values and update DAT accordingly"""
+        logger.info("Potentiometer polling task started")
+        pot_debounce_value = 10  # Threshold to prevent noise
+        
+        try:
+            while True:
+                try:
+                    # Read POT1 (Data Acquisition Time) - direct approach from simple_lcd_test.py
+                    raw_value = ADC.getADC(0, POT_DAT)
+                    pot_value = min(1023, int(raw_value * 1023 / 5.0))
+                    
+                    # Check if potentiometer value has changed significantly
+                    if abs(pot_value - self.last_pot_value) > pot_debounce_value:
+                        logger.info(f"POT1 value changed: {pot_value} (was {self.last_pot_value})")
+                        
+                        self.last_pot_value = pot_value
+                        self.pot_last_change_time = time.time()
+                        
+                        # Enter adjusting state if not already in it and display is active
+                        if self.current_state != State.ADJUSTING and self.display_active:
+                            self.current_state = State.ADJUSTING
+                            await self.update_display_with_state()
+                        
+                        # Calculate new data acquisition time using logarithmic scale
+                        # Map pot value (0-1023) to data acquisition time (0.1-100s)
+                        # t = 0.1 * 10^(pot_value/341)
+                        new_dat = MIN_DAT * (10 ** (pot_value / 341.0))
+                        self.data_acquisition_time = round(new_dat, 2)
+                        
+                        # Update display in adjusting state
+                        if self.current_state == State.ADJUSTING and self.display_active:
+                            await self.update_display_with_state()
+                    
+                    # Check if potentiometer has been stable for a while
+                    if (self.current_state == State.ADJUSTING and 
+                        time.time() - self.pot_last_change_time > self.pot_stable_timeout):
+                        # Send new acquisition time to ADC controller
+                        await self.send_acquisition_time_update()
+                        
+                        # Return to previous state
+                        self.current_state = State.B_FIELD
+                        await self.update_display_with_state()
+                
+                except Exception as e:
+                    logger.error(f"Error reading potentiometer: {e}")
+                
+                # Delay between polls
+                await asyncio.sleep(0.1)
+                
+        except asyncio.CancelledError:
+            logger.info("Potentiometer polling task cancelled")
+        except Exception as e:
+            logger.error(f"Error in potentiometer polling task: {e}")
+
     async def handle_button_press(self, button: int) -> None:
         """Handle button press events based on state machine logic"""
         # Skip if already in an active button press
@@ -229,80 +298,18 @@ class LCDController(LCDInterface):
         except Exception as e:
             logger.error(f"Error toggling power: {e}")
 
-    async def poll_potentiometer(self) -> None:
-        """Poll potentiometer values"""
-        logger.info("Potentiometer polling task started")
-        pot_debounce_value = 10  # Threshold to prevent noise
-        
-        try:
-            while True:
-                # Read POT1 (Data Acquisition Time)
-                pot_value = await self.read_potentiometer(POT_DAT)
-                
-                # Check if potentiometer value has changed significantly
-                if abs(pot_value - self.last_pot_value) > pot_debounce_value:
-                    logger.info(f"POT1 value changed: {pot_value} (was {self.last_pot_value})")
-                    
-                    self.last_pot_value = pot_value
-                    self.pot_last_change_time = time.time()
-                    
-                    # Enter adjusting state if not already in it
-                    if self.current_state != State.ADJUSTING and self.display_active:
-                        self.current_state = State.ADJUSTING
-                        await self.update_display_with_state()
-                    
-                    # Calculate new data acquisition time using logarithmic scale
-                    # Map pot value (0-1023) to data acquisition time (0.1-100s)
-                    # t = 0.1 * 10^(pot_value/341)
-                    new_dat = MIN_DAT * (10 ** (pot_value / 341.0))
-                    self.data_acquisition_time = round(new_dat, 2)
-                    
-                    # Update display in adjusting state
-                    if self.current_state == State.ADJUSTING and self.display_active:
-                        await self.update_display_with_state()
-                
-                # Check if potentiometer has been stable for a while
-                if (self.current_state == State.ADJUSTING and 
-                    time.time() - self.pot_last_change_time > self.pot_stable_timeout):
-                    # Send new acquisition time to ADC controller
-                    await self.send_acquisition_time_update()
-                    
-                    # Return to previous state
-                    self.current_state = State.B_FIELD
-                    await self.update_display_with_state()
-                
-                await asyncio.sleep(0.1)  # Delay between polls
-                
-        except asyncio.CancelledError:
-            logger.info("Potentiometer polling task cancelled")
-        except Exception as e:
-            logger.error(f"Error polling potentiometer: {e}")
-
-    async def read_potentiometer(self, channel: int) -> int:
-        """Read analog value from potentiometer using ADC"""
-        try:
-            # Try to use Pi-Plates ADC
-            import piplates.ADCplate as ADC
-            pot_value = ADC.getADC(0, channel)  # (board, channel)
-            # Map from voltage (0-5V) to range (0-1023)
-            return int(pot_value * 1023 / 5.0)
-        except Exception as e:
-            logger.error(f"Error reading potentiometer: {e}")
-            # Return last known value if failed
-            return self.last_pot_value
-
     async def send_acquisition_time_update(self) -> None:
         """Send updated data acquisition time to ADC controller"""
         try:
-            # Send control message to ADC component to update sampling time
+            # Send control message to ADC component to update sampling parameters
             control_msg = {
                 "topic": "adc/command",
                 "payload": {
-                    "sample_time": self.data_acquisition_time
+                    "sample_rate": int(1 / self.data_acquisition_time * 32)  # Convert to appropriate sample rate
                 }
             }
             await self.q_control.put(control_msg)
-            logger.info(f"Sent new acquisition time: {self.data_acquisition_time}s")
+            logger.info(f"Sent new acquisition time: {self.data_acquisition_time}s (sample rate: {control_msg['payload']['sample_rate']})")
         except Exception as e:
             logger.error(f"Error sending acquisition time update: {e}")
 
@@ -325,7 +332,7 @@ class LCDController(LCDInterface):
                             self.b_field = self.calculate_b_field(voltage)
                     
                     # Process FFT data
-                    elif data["topic"] == "fft/data":
+                    elif data["topic"] == "fft_mags/data":
                         self.fft_data = data["payload"]  # List of [freq, magnitude]
                         
                         # Calculate peak
