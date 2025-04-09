@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import asyncio
 import logging
 import random
@@ -88,7 +87,6 @@ async def control_message_handler(q_control: asyncio.Queue):
 async def handle_user_input():
     """Handle user keyboard input for testing"""
     global pot_value
-    global lcd
     
     print("\nManual Test Controls:")
     print("  m - Simulate mode button press")
@@ -108,32 +106,15 @@ async def handle_user_input():
                 return True
                 
             elif cmd == 'm':
-                logger.info("Simulating mode button press")
-                # Directly manipulate button state for testing
-                if 'lcd' in globals() and lcd:
-                    # Log and simulate the effect of mode button press
-                    if lcd.current_state == 0:  # B_FIELD
-                        lcd.current_state = 1  # FFT
-                        logger.info("Changed to FFT mode")
-                    else:
-                        lcd.current_state = 0  # B_FIELD
-                        logger.info("Changed to B_FIELD mode")
-                    # Update display
-                    await lcd.update_display_with_state()
+                logger.info("Simulating mode button press - manually triggering")
+                # Directly call the handler instead of through GPIO
+                if hasattr(lcd, 'handle_button_press'):
+                    await lcd.handle_button_press(17)  # BUTTON_MODE
                 
             elif cmd == 'p':
-                logger.info("Simulating power button press")
-                if 'lcd' in globals() and lcd:
-                    # Toggle display active state
-                    lcd.display_active = not lcd.display_active
-                    if lcd.display_active:
-                        logger.info("Display turned ON")
-                        await lcd.update_display("Display ON", "Resuming...")
-                        await asyncio.sleep(0.5)
-                        await lcd.update_display_with_state()
-                    else:
-                        logger.info("Display turned OFF")
-                        await lcd.update_display("", "")
+                logger.info("Simulating power button press - manually triggering")
+                if hasattr(lcd, 'handle_button_press'):
+                    await lcd.handle_button_press(22)  # BUTTON_POWER
                 
             elif cmd == '+':
                 # Increase DAT (move potentiometer value up)
@@ -154,15 +135,12 @@ async def handle_user_input():
 async def main():
     global lcd
     
-    # Clean up any existing GPIO setup at the start
-    try:
-        GPIO.cleanup()
-    except:
-        pass
-        
     # Initialize queues for testing
     q_data = asyncio.Queue()
     q_control = asyncio.Queue()
+    
+    # Tasks list for proper cleanup
+    tasks = []
     
     try:
         # Create LCD controller
@@ -173,12 +151,15 @@ async def main():
         
         # Start data generation
         data_task = asyncio.create_task(generate_test_data(q_data))
+        tasks.append(data_task)
         
         # Start control message handler
         control_task = asyncio.create_task(control_message_handler(q_control))
+        tasks.append(control_task)
         
         # User input handling
         user_task = asyncio.create_task(handle_user_input())
+        tasks.append(user_task)
         
         # Run the LCD controller
         logger.info("Starting LCD controller test")
@@ -189,25 +170,10 @@ async def main():
         logger.info("  q - Quit the test")
         
         lcd_task = asyncio.create_task(lcd.run())
+        tasks.append(lcd_task)
         
         # Wait until user requests exit
         await user_task
-        
-        # Cancel tasks in a specific order
-        lcd_task.cancel()
-        await asyncio.sleep(0.2)
-        
-        data_task.cancel()
-        control_task.cancel()
-        
-        # Wait for all tasks to complete
-        done, pending = await asyncio.wait(
-            [data_task, control_task, lcd_task], 
-            timeout=2.0
-        )
-        
-        if pending:
-            logger.warning(f"{len(pending)} tasks did not complete cleanly")
         
     except KeyboardInterrupt:
         logger.info("Test interrupted by user")
@@ -216,6 +182,18 @@ async def main():
     finally:
         logger.info("Cleaning up...")
         
+        # Cancel all tasks
+        for task in tasks:
+            if task and not task.done():
+                task.cancel()
+                
+        # Wait for tasks to complete
+        if tasks:
+            try:
+                await asyncio.wait(tasks, timeout=1.0)
+            except Exception as e:
+                logger.error(f"Error during task cleanup: {e}")
+                
         # Ensure LCD cleanup is called
         if 'lcd' in globals() and lcd:
             try:
@@ -223,16 +201,16 @@ async def main():
             except Exception as e:
                 logger.error(f"Error during LCD cleanup: {e}")
             
-        # Final GPIO cleanup
+        logger.info("Test complete")
+
+if __name__ == "__main__":
+    try:
+        # Clean up any existing GPIO setup
         try:
             GPIO.cleanup()
         except:
             pass
             
-        logger.info("Test complete")
-
-if __name__ == "__main__":
-    try:
         # Use asyncio.run to ensure proper cleanup of event loop
         asyncio.run(main())
     except KeyboardInterrupt:
