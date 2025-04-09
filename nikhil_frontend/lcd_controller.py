@@ -7,6 +7,9 @@ from RPLCD.i2c import CharLCD
 from lcd_interface import LCDInterface
 import piplates.ADCplate as ADC
 
+# Set GPIO mode globally - required for Pi-Plates ADC
+GPIO.setmode(GPIO.BCM)
+
 logger = logging.getLogger(__name__ + ".LCDController")
 
 # Define state constants
@@ -141,14 +144,7 @@ class LCDController(LCDInterface):
     async def _setup_gpio(self) -> None:
         """Set up GPIO buttons with polling approach"""
         try:
-            # Clean up any existing GPIO setup
-            try:
-                GPIO.cleanup()
-            except:
-                pass
-            
-            # Setup GPIO
-            GPIO.setmode(GPIO.BCM)
+            # GPIO mode is already set globally at the top of the file
             
             # Use polling instead of edge detection for more reliability
             GPIO.setup(BUTTON_MODE, GPIO.IN, pull_up_down=GPIO.PUD_UP)
@@ -206,8 +202,13 @@ class LCDController(LCDInterface):
             while True:
                 try:
                     # Read POT1 (Data Acquisition Time) - direct approach from simple_lcd_test.py
-                    raw_value = ADC.getADC(0, POT_DAT)
+                    # Use piplates.ADCplate directly without GPIO dependency
+                    raw_value = ADC.getADC(0, POT_DAT)  # Board 0, Channel 0
                     pot_value = min(1023, int(raw_value * 1023 / 5.0))
+                    
+                    # For debugging
+                    if time.time() % 10 < 0.1:  # Log every ~10 seconds
+                        logger.info(f"POT1 current value: {pot_value}, voltage: {raw_value:.2f}V")
                     
                     # Check if potentiometer value has changed significantly
                     if abs(pot_value - self.last_pot_value) > pot_debounce_value:
@@ -514,3 +515,4 @@ class LCDController(LCDInterface):
             logger.error(f"Error during GPIO cleanup: {e}")
         
         logger.info("Cleanup complete")
+
