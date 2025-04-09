@@ -2,7 +2,7 @@
 import RPi.GPIO as GPIO
 import time
 from RPLCD.i2c import CharLCD
-import piplates.ADCplate as ADC
+import pi_plates.ADCplate as ADC
 
 # Initialize LCD
 lcd = CharLCD(
