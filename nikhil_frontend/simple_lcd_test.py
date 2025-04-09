@@ -1,48 +1,45 @@
 #!/usr/bin/env python3
-"""
-Simple LCD test - displays basic text on LCD
-"""
 import time
 from RPLCD.i2c import CharLCD
-import RPi.GPIO as GPIO
+import piplates.ADCplate as ADC
 
-# Initialize the LCD
+# Initialize LCD
+lcd = CharLCD(
+    i2c_expander='PCF8574',
+    address=0x27,
+    port=1,
+    cols=16,
+    rows=2,
+    dotsize=8
+)
+lcd.clear()
+
+print("Pi-Plates ADC Potentiometer Test")
+print("Turn the potentiometer to see values change")
+print("Press Ctrl+C to exit")
+
 try:
-    # Try with common settings
-    lcd = CharLCD(
-        i2c_expander='PCF8574',
-        address=0x27,     
-        port=1,
-        cols=16,
-        rows=2,
-        dotsize=8
-    )
-
-    lcd.clear()
-    time.sleep(1)
-    
-    # Display test message
-    lcd.cursor_pos = (0, 0)
-    lcd.write_string("Hello World!")
-    lcd.cursor_pos = (1, 0)
-    lcd.write_string("LCD Test OK")
-    
-    print("Test message sent to LCD")
-    print("Press Ctrl+C to exit")
-
     while True:
-        time.sleep(1)
+        # Read from channel 0 on board 0
+        raw_value = ADC.getADC(0, 0)
         
-except KeyboardInterrupt:
-    print("Test stopped by user")
-    
-except Exception as e:
-    print(f"Error: {e}")
-    
-finally:
-    # Clean up
-    try:
+        # Scale to 0-1023 range, ensuring upper limit
+        pot_value = min(1023, int(raw_value * 1023 / 5.0))
+        
+        # Update LCD
         lcd.clear()
-        GPIO.cleanup()
-    except:
-        pass
+        lcd.cursor_pos = (0, 0)
+        lcd.write_string(f"POT Value: {pot_value}")
+        lcd.cursor_pos = (1, 0)
+        lcd.write_string(f"Voltage: {raw_value:.2f}V")
+        
+        # Print to terminal
+        print(f"POT: {pot_value} (0-1023), Voltage: {raw_value:.2f}V")
+        
+        time.sleep(0.2)
+
+except KeyboardInterrupt:
+    print("\nTest stopped by user")
+finally:
+    lcd.clear()
+    print("Test complete")
