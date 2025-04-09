@@ -23,8 +23,8 @@ try:
         # Read from channel 0 on board 0
         raw_value = ADC.getADC(0, 0)
         
-        # Scale to 0-1023 range (assuming 0-5V input)
-       pot_value = min(1023, int((raw_value * 1023 / 5.0)))
+        # Scale to 0-1023 range, ensuring upper limit
+        pot_value = min(1023, int(raw_value * 1023 / 5.0))
         
         # Update LCD
         lcd.clear()
