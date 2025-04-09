@@ -19,6 +19,13 @@ logger = logging.getLogger(__name__)
 
 # Global variables for potentiometer simulation
 pot_value = 341  # Middle position by default
+last_pot_value = 341  # Track changes
+
+# Set GPIO mode once globally
+try:
+    GPIO.setmode(GPIO.BCM)
+except:
+    pass
 
 async def generate_test_data(q_data: asyncio.Queue):
     """Generate simulated voltage and FFT data for testing"""
@@ -50,9 +57,9 @@ async def generate_test_data(q_data: asyncio.Queue):
             # Combine all peaks
             fft_data = [primary_peak, secondary_peak] + noise_peaks
             
-            # Send FFT data
+            # Send FFT data - must match expected topic in controller
             await q_data.put({
-                "topic": "fft/data", 
+                "topic": "fft_mags/data", 
                 "payload": fft_data
             })
             
@@ -64,11 +71,11 @@ async def generate_test_data(q_data: asyncio.Queue):
     except Exception as e:
         logger.error(f"Error in data generation: {e}")
 
-# Mock the potentiometer reading for testing
 async def mock_read_potentiometer(channel):
     """Simulate reading from a potentiometer"""
     global pot_value
-    return pot_value
+    # Return value as voltage (0-5V) to match ADC output
+    return pot_value * 5.0 / 1023.0
 
 async def control_message_handler(q_control: asyncio.Queue):
     """Handle control messages sent from LCD controller"""
@@ -83,6 +90,24 @@ async def control_message_handler(q_control: asyncio.Queue):
         except Exception as e:
             logger.error(f"Error in control message handler: {e}")
             await asyncio.sleep(1)
+
+async def simulate_pot_change():
+    """Periodically check if global pot value has changed and update LCD controller"""
+    global pot_value, last_pot_value
+    
+    try:
+        while True:
+            # If pot value has changed significantly, log it
+            if abs(pot_value - last_pot_value) > 10:
+                logger.info(f"Potentiometer changed from {last_pot_value} to {pot_value}")
+                last_pot_value = pot_value
+                
+            await asyncio.sleep(0.1)
+            
+    except asyncio.CancelledError:
+        logger.info("Pot change simulator cancelled")
+    except Exception as e:
+        logger.error(f"Error in pot change simulator: {e}")
 
 async def handle_user_input():
     """Handle user keyboard input for testing"""
@@ -147,6 +172,7 @@ async def main():
         lcd = LCDController(q_data, q_control)
         
         # Replace the potentiometer reading with our mock function
+        # This uses monkey patching to swap the method
         lcd.read_potentiometer = mock_read_potentiometer
         
         # Start data generation
@@ -156,6 +182,10 @@ async def main():
         # Start control message handler
         control_task = asyncio.create_task(control_message_handler(q_control))
         tasks.append(control_task)
+        
+        # Start potentiometer change simulator
+        pot_task = asyncio.create_task(simulate_pot_change())
+        tasks.append(pot_task)
         
         # User input handling
         user_task = asyncio.create_task(handle_user_input())
@@ -205,12 +235,6 @@ async def main():
 
 if __name__ == "__main__":
     try:
-        # Clean up any existing GPIO setup
-        try:
-            GPIO.cleanup()
-        except:
-            pass
-            
         # Use asyncio.run to ensure proper cleanup of event loop
         asyncio.run(main())
     except KeyboardInterrupt:
