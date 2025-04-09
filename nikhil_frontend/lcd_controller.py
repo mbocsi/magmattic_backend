@@ -65,12 +65,6 @@ class LCDController(LCDInterface):
         self.pot_last_change_time = 0
         self.pot_stable_timeout = 1.0  # Time before applying pot changes
         
-        # Button state tracking for polling
-        self.prev_button_states = {
-            BUTTON_MODE: 1,  # Default HIGH with pull-up
-            BUTTON_POWER: 1  # Default HIGH with pull-up
-        }
-        
         # LCD instance
         self.lcd = None
         
@@ -131,30 +125,63 @@ class LCDController(LCDInterface):
         logger.info("Using dummy LCD implementation")
 
     async def _setup_gpio(self) -> None:
-        """Set up GPIO buttons using polling only (no edge detection)"""
+        """Set up GPIO buttons with polling approach"""
         try:
-            # Clean up any existing GPIO setup first to avoid conflicts
+            # Clean up any existing GPIO setup
             try:
                 GPIO.cleanup()
-            except Exception as e:
-                logger.info(f"GPIO cleanup initial note: {e}")
-                
+            except:
+                pass
+            
             # Setup GPIO
             GPIO.setmode(GPIO.BCM)
             
-            # Set up buttons with pull-up resistors - simple input only
+            # Use polling instead of edge detection for more reliability
             GPIO.setup(BUTTON_MODE, GPIO.IN, pull_up_down=GPIO.PUD_UP)
             GPIO.setup(BUTTON_POWER, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-            
-            # Initialize previous button states
-            self.prev_button_states[BUTTON_MODE] = GPIO.input(BUTTON_MODE)
-            self.prev_button_states[BUTTON_POWER] = GPIO.input(BUTTON_POWER)
             
             logger.info("GPIO setup complete")
             
         except Exception as e:
             logger.error(f"Failed to set up GPIO: {e}")
             logger.info("Continuing without GPIO functionality")
+    
+    async def poll_buttons(self) -> None:
+        """Poll buttons for state changes with debouncing"""
+        logger.info("Button polling task started")
+        
+        prev_mode_state = GPIO.input(BUTTON_MODE)
+        prev_power_state = GPIO.input(BUTTON_POWER)
+        
+        try:
+            while True:
+                # Read current button states
+                mode_state = GPIO.input(BUTTON_MODE)
+                power_state = GPIO.input(BUTTON_POWER)
+                
+                # Check for mode button press (HIGH to LOW with pull-up)
+                if prev_mode_state == GPIO.HIGH and mode_state == GPIO.LOW:
+                    logger.info("Mode button pressed")
+                    await self.handle_button_press(BUTTON_MODE)
+                    await asyncio.sleep(self.button_debounce)  # Debounce
+                
+                # Check for power button press
+                if prev_power_state == GPIO.HIGH and power_state == GPIO.LOW:
+                    logger.info("Power button pressed")
+                    await self.handle_button_press(BUTTON_POWER)
+                    await asyncio.sleep(self.button_debounce)  # Debounce
+                
+                # Update previous states
+                prev_mode_state = mode_state
+                prev_power_state = power_state
+                
+                # Small delay between polling cycles
+                await asyncio.sleep(0.05)
+                
+        except asyncio.CancelledError:
+            logger.info("Button polling task cancelled")
+        except Exception as e:
+            logger.error(f"Error polling buttons: {e}")
 
     async def handle_button_press(self, button: int) -> None:
         """Handle button press events based on state machine logic"""
@@ -202,22 +229,66 @@ class LCDController(LCDInterface):
         except Exception as e:
             logger.error(f"Error toggling power: {e}")
 
+    async def poll_potentiometer(self) -> None:
+        """Poll potentiometer values"""
+        logger.info("Potentiometer polling task started")
+        pot_debounce_value = 10  # Threshold to prevent noise
+        
+        try:
+            while True:
+                # Read POT1 (Data Acquisition Time)
+                pot_value = await self.read_potentiometer(POT_DAT)
+                
+                # Check if potentiometer value has changed significantly
+                if abs(pot_value - self.last_pot_value) > pot_debounce_value:
+                    logger.info(f"POT1 value changed: {pot_value} (was {self.last_pot_value})")
+                    
+                    self.last_pot_value = pot_value
+                    self.pot_last_change_time = time.time()
+                    
+                    # Enter adjusting state if not already in it
+                    if self.current_state != State.ADJUSTING and self.display_active:
+                        self.current_state = State.ADJUSTING
+                        await self.update_display_with_state()
+                    
+                    # Calculate new data acquisition time using logarithmic scale
+                    # Map pot value (0-1023) to data acquisition time (0.1-100s)
+                    # t = 0.1 * 10^(pot_value/341)
+                    new_dat = MIN_DAT * (10 ** (pot_value / 341.0))
+                    self.data_acquisition_time = round(new_dat, 2)
+                    
+                    # Update display in adjusting state
+                    if self.current_state == State.ADJUSTING and self.display_active:
+                        await self.update_display_with_state()
+                
+                # Check if potentiometer has been stable for a while
+                if (self.current_state == State.ADJUSTING and 
+                    time.time() - self.pot_last_change_time > self.pot_stable_timeout):
+                    # Send new acquisition time to ADC controller
+                    await self.send_acquisition_time_update()
+                    
+                    # Return to previous state
+                    self.current_state = State.B_FIELD
+                    await self.update_display_with_state()
+                
+                await asyncio.sleep(0.1)  # Delay between polls
+                
+        except asyncio.CancelledError:
+            logger.info("Potentiometer polling task cancelled")
+        except Exception as e:
+            logger.error(f"Error polling potentiometer: {e}")
+
     async def read_potentiometer(self, channel: int) -> int:
-        """Read analog value from potentiometer using Pi-Plates ADC"""
+        """Read analog value from potentiometer using ADC"""
         try:
             # Try to use Pi-Plates ADC
             import piplates.ADCplate as ADC
-            # Get a raw voltage reading (0-5V)
-            pot_voltage = ADC.getADC(0, channel)  # (board, channel)
-            # Convert to a scale of 0-1023
-            pot_value = int(pot_voltage * 204.6)  # 1023/5
-            # Ensure value is in valid range
-            return max(0, min(1023, pot_value))
-        except ImportError:
-            logger.error("Could not import piplates.ADCplate - using default pot value")
-            return self.last_pot_value
+            pot_value = ADC.getADC(0, channel)  # (board, channel)
+            # Map from voltage (0-5V) to range (0-1023)
+            return int(pot_value * 1023 / 5.0)
         except Exception as e:
             logger.error(f"Error reading potentiometer: {e}")
+            # Return last known value if failed
             return self.last_pot_value
 
     async def send_acquisition_time_update(self) -> None:
@@ -234,6 +305,55 @@ class LCDController(LCDInterface):
             logger.info(f"Sent new acquisition time: {self.data_acquisition_time}s")
         except Exception as e:
             logger.error(f"Error sending acquisition time update: {e}")
+
+    async def process_data(self) -> None:
+        """Process incoming data from queue"""
+        logger.info("Data processing task started")
+        
+        try:
+            while True:
+                data = await self.q_data.get()
+                
+                try:
+                    # Process voltage data
+                    if data["topic"] == "voltage/data":
+                        if isinstance(data["payload"], list) and len(data["payload"]) > 0:
+                            # Store voltage values
+                            voltage = data["payload"][0]
+                            self.last_voltage = voltage
+                            self.voltage_buffer.append(voltage)
+                            self.b_field = self.calculate_b_field(voltage)
+                    
+                    # Process FFT data
+                    elif data["topic"] == "fft/data":
+                        self.fft_data = data["payload"]  # List of [freq, magnitude]
+                        
+                        # Calculate peak
+                        if self.fft_data:
+                            self.peak_freq, self.peak_mag = self.calculate_peak(self.fft_data)
+                    
+                    # Update display if not in adjusting state
+                    if (self.current_state != State.ADJUSTING and 
+                        self.current_state != State.OFF and 
+                        self.display_active):
+                        current_time = time.time()
+                        if current_time - self.last_display_update >= self.display_update_interval:
+                            await self.update_display_with_state()
+                            self.last_display_update = current_time
+                
+                except Exception as e:
+                    logger.error(f"Error processing data: {e}")
+                
+                # Mark this task as done
+                self.q_data.task_done()
+                
+                # Small delay to prevent CPU overload
+                await asyncio.sleep(0.01)
+                
+        except asyncio.CancelledError:
+            logger.info("Data processing task cancelled")
+        except Exception as e:
+            logger.error(f"Error in data processing task: {e}")
 
     async def update_display(self, line1: str, line2: str) -> None:
         """Update both lines of the LCD display"""
@@ -252,8 +372,6 @@ class LCDController(LCDInterface):
             # Write second line
             self.lcd.cursor_pos = (1, 0)
             self.lcd.write_string(line2[:LCD_WIDTH])
-            
-            logger.debug(f"Updated display - Line1: '{line1}', Line2: '{line2}'")
             
         except Exception as e:
             logger.error(f"Display update failed: {e}")
@@ -328,143 +446,44 @@ class LCDController(LCDInterface):
         else:
             return f"{seconds*1000:.0f}ms"
 
-    async def process_data_and_buttons(self) -> None:
-        """Combined task for processing data and checking buttons"""
-        logger.info("Starting main processing loop")
-        
-        try:
-            while True:
-                # Check for button presses
-                # Read current button states
-                try:
-                    curr_mode_state = GPIO.input(BUTTON_MODE)
-                    curr_power_state = GPIO.input(BUTTON_POWER)
-                    
-                    # Check for button press (transition from HIGH to LOW with pull-up)
-                    if self.prev_button_states[BUTTON_MODE] == GPIO.HIGH and curr_mode_state == GPIO.LOW:
-                        logger.info("Mode button pressed (polling)")
-                        await self.handle_button_press(BUTTON_MODE)
-                        # Add debounce delay
-                        await asyncio.sleep(self.button_debounce)
-                    
-                    if self.prev_button_states[BUTTON_POWER] == GPIO.HIGH and curr_power_state == GPIO.LOW:
-                        logger.info("Power button pressed (polling)")
-                        await self.handle_button_press(BUTTON_POWER)
-                        # Add debounce delay
-                        await asyncio.sleep(self.button_debounce)
-                    
-                    # Update previous states
-                    self.prev_button_states[BUTTON_MODE] = curr_mode_state
-                    self.prev_button_states[BUTTON_POWER] = curr_power_state
-                    
-                except Exception as e:
-                    logger.error(f"Error reading buttons: {e}")
-                
-                # Check potentiometer value
-                try:
-                    pot_value = await self.read_potentiometer(POT_DAT)
-                    pot_change = abs(pot_value - self.last_pot_value)
-                    
-                    # If significant change detected
-                    if pot_change > 10:
-                        logger.info(f"POT1 value changed: {pot_value} (was {self.last_pot_value})")
-                        
-                        self.last_pot_value = pot_value
-                        self.pot_last_change_time = time.time()
-                        
-                        # Enter adjusting state if not already in it
-                        if self.current_state != State.ADJUSTING and self.display_active:
-                            self.current_state = State.ADJUSTING
-                            await self.update_display_with_state()
-                        
-                        # Calculate new data acquisition time using logarithmic scale
-                        # Map pot value (0-1023) to data acquisition time (0.1-100s)
-                        # t = 0.1 * 10^(pot_value/341)
-                        new_dat = MIN_DAT * (10 ** (pot_value / 341.0))
-                        self.data_acquisition_time = round(new_dat, 2)
-                        
-                        # Update display in adjusting state
-                        if self.current_state == State.ADJUSTING and self.display_active:
-                            await self.update_display_with_state()
-                    
-                    # Check if potentiometer has been stable for a while
-                    if (self.current_state == State.ADJUSTING and 
-                        time.time() - self.pot_last_change_time > self.pot_stable_timeout):
-                        # Send new acquisition time to ADC controller
-                        await self.send_acquisition_time_update()
-                        
-                        # Return to previous state
-                        self.current_state = State.B_FIELD
-                        await self.update_display_with_state()
-                        
-                except Exception as e:
-                    logger.error(f"Error reading potentiometer: {e}")
-                
-                # Check for queued data if available
-                try:
-                    if not self.q_data.empty():
-                        data = await self.q_data.get()
-                        
-                        # Process voltage data
-                        if data["topic"] == "voltage/data":
-                            if isinstance(data["payload"], list) and len(data["payload"]) > 0:
-                                # Store voltage values
-                                voltage = data["payload"][0]
-                                self.last_voltage = voltage
-                                self.voltage_buffer.append(voltage)
-                                self.b_field = self.calculate_b_field(voltage)
-                        
-                        # Process FFT data
-                        elif data["topic"] == "fft/data":
-                            self.fft_data = data["payload"]  # List of [freq, magnitude]
-                            
-                            # Calculate peak
-                            if self.fft_data:
-                                self.peak_freq, self.peak_mag = self.calculate_peak(self.fft_data)
-                        
-                        # Mark as done
-                        self.q_data.task_done()
-                except asyncio.QueueEmpty:
-                    pass
-                except Exception as e:
-                    logger.error(f"Error processing data: {e}")
-                
-                # Update display periodically if not in adjusting state
-                current_time = time.time()
-                if (self.current_state != State.ADJUSTING and 
-                    self.current_state != State.OFF and 
-                    self.display_active and
-                    current_time - self.last_display_update >= self.display_update_interval):
-                    await self.update_display_with_state()
-                    self.last_display_update = current_time
-                
-                # Small delay to prevent CPU overload
-                await asyncio.sleep(0.05)
-                
-        except asyncio.CancelledError:
-            logger.info("Main processing loop cancelled")
-        except Exception as e:
-            logger.error(f"Error in main processing loop: {e}")
-
     async def run(self) -> None:
         """Main run loop"""
+        tasks = []
+        
         try:
             # Initialize display
             await self.initialize_display()
+            
+            # Start button polling task
+            button_task = asyncio.create_task(self.poll_buttons())
+            tasks.append(button_task)
+            
+            # Start potentiometer polling task
+            pot_task = asyncio.create_task(self.poll_potentiometer())
+            tasks.append(pot_task)
+            
+            # Start data processing task
+            data_task = asyncio.create_task(self.process_data())
+            tasks.append(data_task)
             
             # Initial display update
             await self.update_display("Magnetometer", "Ready")
             await asyncio.sleep(1)
             await self.update_display_with_state()
             
-            # Run the main processing loop - single task for everything
-            await self.process_data_and_buttons()
+            # Wait for tasks to complete (they shouldn't normally)
+            await asyncio.gather(*tasks)
             
         except asyncio.CancelledError:
             logger.info("LCD controller main task cancelled")
         except Exception as e:
             logger.error(f"LCD controller error: {e}")
         finally:
+            # Cancel all running tasks
+            for task in tasks:
+                if task and not task.done():
+                    task.cancel()
+            
             # Clean up
             await self.cleanup()
     
