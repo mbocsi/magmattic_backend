@@ -7,9 +7,6 @@ from RPLCD.i2c import CharLCD
 from lcd_interface import LCDInterface
 import piplates.ADCplate as ADC
 
-# Set GPIO mode globally - required for Pi-Plates ADC
-GPIO.setmode(GPIO.BCM)
-
 logger = logging.getLogger(__name__ + ".LCDController")
 
 # Define state constants
@@ -201,18 +198,13 @@ class LCDController(LCDInterface):
         try:
             while True:
                 try:
-                    # Read POT1 (Data Acquisition Time) - direct approach from simple_lcd_test.py
-                    # Use piplates.ADCplate directly without GPIO dependency
-                    raw_value = ADC.getADC(0, POT_DAT)  # Board 0, Channel 0
+                    # Direct ADC reading - exactly like simple_lcd_test.py
+                    raw_value = ADC.getADC(0, POT_DAT)
                     pot_value = min(1023, int(raw_value * 1023 / 5.0))
-                    
-                    # For debugging
-                    if time.time() % 10 < 0.1:  # Log every ~10 seconds
-                        logger.info(f"POT1 current value: {pot_value}, voltage: {raw_value:.2f}V")
                     
                     # Check if potentiometer value has changed significantly
                     if abs(pot_value - self.last_pot_value) > pot_debounce_value:
-                        logger.info(f"POT1 value changed: {pot_value} (was {self.last_pot_value})")
+                        logger.info(f"POT1 value changed: {pot_value}, voltage: {raw_value:.2f}V")
                         
                         self.last_pot_value = pot_value
                         self.pot_last_change_time = time.time()
@@ -220,7 +212,6 @@ class LCDController(LCDInterface):
                         # Enter adjusting state if not already in it and display is active
                         if self.current_state != State.ADJUSTING and self.display_active:
                             self.current_state = State.ADJUSTING
-                            await self.update_display_with_state()
                         
                         # Calculate new data acquisition time using logarithmic scale
                         # Map pot value (0-1023) to data acquisition time (0.1-100s)
@@ -229,8 +220,9 @@ class LCDController(LCDInterface):
                         self.data_acquisition_time = round(new_dat, 2)
                         
                         # Update display in adjusting state
-                        if self.current_state == State.ADJUSTING and self.display_active:
-                            await self.update_display_with_state()
+                        if self.display_active:
+                            time_str = self.format_time(self.data_acquisition_time)
+                            await self.update_display("ADJUSTING", f"Acq Time: {time_str}")
                     
                     # Check if potentiometer has been stable for a while
                     if (self.current_state == State.ADJUSTING and 
@@ -515,4 +507,3 @@ class LCDController(LCDInterface):
             logger.error(f"Error during GPIO cleanup: {e}")
         
         logger.info("Cleanup complete")
-
