@@ -9,6 +9,7 @@ from adc import ADCComponent, VirtualADCComponent
 from app_interface import AppComponent
 from lcd import LCDComponent, VirtualLCDComponent
 from motor import MotorComponent, VirtualMotorComponent
+from nikhil_frontend import LCDController
 from ws import WebSocketComponent
 from type_defs import ADCStatus, CalculationStatus, Message
 import time
@@ -114,9 +115,9 @@ if __name__ == "__main__":
     )
 
     # === Initialize ADC controller (PiPlate or Virtual ADC Only! Comment out if using ESP32) ===
-    # adc_sub_queue = asyncio.Queue()
+    adc_sub_queue = asyncio.Queue()
     # adc = ADCComponent(pub_queue=app_pub_queue, sub_queue=adc_sub_queue)
-    # adc = VirtualADCComponent(pub_queue=app_pub_queue, sub_queue=adc_sub_queue)
+    adc = VirtualADCComponent(pub_queue=app_pub_queue, sub_queue=adc_sub_queue)
 
     # === Initialize Motor Controller ===
     # motor_sub_queue = asyncio.Queue()
@@ -130,13 +131,17 @@ if __name__ == "__main__":
     # lcd = LCDComponent(lcd_data_queue)
     # lcd = VirtualLCDComponent(sub_queue=lcd_sub_queue)
 
+    # === Initialize Frontend ===
+    frontend_sub_queue = asyncio.Queue()
+    frontend = LCDController(frontend_sub_queue, app_pub_queue)
+
     calculation_sub_queue = asyncio.Queue()
     calculation = CalculationComponent(
         pub_queue=app_pub_queue, sub_queue=calculation_sub_queue, Nsig=1200, Ntot=1200
     )
 
     # === Initialize the app ===
-    components = [ws, calculation]  # Add all components to this array
+    components = [ws, calculation, adc, frontend]  # Add all components to this array
     app = App(*components, pub_queue=app_pub_queue)
 
     # === Add queue subscriptions ===
@@ -152,7 +157,10 @@ if __name__ == "__main__":
     # app.registerSub(["fft/data"], lcd_sub_queue)
 
     # Only uncomment this if using PiPlate or Virtual ADC
-    # app.registerSub(["adc/command"], adc_sub_queue)
+    app.registerSub(["adc/command"], adc_sub_queue)
+
+    # Uncomment this if using Frontend
+    app.registerSub(["voltage/data", "fft_mags/data"], frontend_sub_queue)
 
     logger.info("starting app")
     asyncio.run(app.run())
