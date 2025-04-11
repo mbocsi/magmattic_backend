@@ -215,6 +215,10 @@ class CalculationComponent(AppComponent):
         original_values = {}
         try:
             for var, value in control["payload"].items():
+                if var == "acquisition_time":
+                    self.Nsig = self.sample_rate * value
+                    self.Ntot = self.sample_rate * value
+                    continue
                 if hasattr(self, var):
                     original_values[var] = getattr(self, var)
                 else:
@@ -224,10 +228,10 @@ class CalculationComponent(AppComponent):
                 if var == "Nsig":
                     self.voltage_data = deque(maxlen=value)
 
-                loop.call_soon_threadsafe(
-                    self.pub_queue.put_nowait,
-                    {"topic": "calculation/status", "payload": self.getStatus()},
-                )
+            loop.call_soon_threadsafe(
+                self.pub_queue.put_nowait,
+                {"topic": "calculation/status", "payload": self.getStatus()},
+            )
         except AttributeError:
             for var, value in original_values.items():
                 setattr(self, var, value)
