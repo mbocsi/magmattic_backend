@@ -218,6 +218,7 @@ class CalculationComponent(AppComponent):
                 if var == "acquisition_time":
                     self.Nsig = int(self.sample_rate * value)
                     self.Ntot = int(self.sample_rate * value)
+                    self.voltage_data = deque(maxlen=self.Ntot)
                     continue
                 if hasattr(self, var):
                     original_values[var] = getattr(self, var)
