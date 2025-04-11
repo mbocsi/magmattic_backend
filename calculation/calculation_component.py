@@ -216,8 +216,8 @@ class CalculationComponent(AppComponent):
         try:
             for var, value in control["payload"].items():
                 if var == "acquisition_time":
-                    self.Nsig = self.sample_rate * value
-                    self.Ntot = self.sample_rate * value
+                    self.Nsig = int(self.sample_rate * value)
+                    self.Ntot = int(self.sample_rate * value)
                     continue
                 if hasattr(self, var):
                     original_values[var] = getattr(self, var)
