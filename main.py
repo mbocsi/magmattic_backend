@@ -9,7 +9,8 @@ from adc import ADCComponent, VirtualADCComponent
 from app_interface import AppComponent
 from lcd import LCDComponent, VirtualLCDComponent  # Deprecated: don't use
 from motor import MotorComponent, VirtualMotorComponent
-from nikhil_frontend import LCDController  # Please rename this package
+
+# from nikhil_frontend import LCDController  # Please rename this package
 from ws import WebSocketComponent
 from type_defs import ADCStatus, CalculationStatus, Message
 import time
@@ -120,11 +121,11 @@ if __name__ == "__main__":
     adc = VirtualADCComponent(pub_queue=app_pub_queue, sub_queue=adc_sub_queue)
 
     # === Initialize Motor Controller ===
-    # motor_sub_queue = asyncio.Queue()
+    motor_sub_queue = asyncio.Queue()
     # motor = MotorComponent(data_queue, motor_control_queue)
-    # motor = VirtualMotorComponent(
-    #     pub_queue=app_pub_queue, sub_queue=motor_sub_queue, init_speed=5
-    # )
+    motor = VirtualMotorComponent(
+        pub_queue=app_pub_queue, sub_queue=motor_sub_queue, init_speed=5
+    )
 
     # === Initialize LCD Component ===
     # lcd_sub_queue = asyncio.Queue()
@@ -132,8 +133,8 @@ if __name__ == "__main__":
     # lcd = VirtualLCDComponent(sub_queue=lcd_sub_queue)
 
     # === Initialize Frontend ===
-    frontend_sub_queue = asyncio.Queue()
-    frontend = LCDController(frontend_sub_queue, app_pub_queue)
+    # frontend_sub_queue = asyncio.Queue()
+    # frontend = LCDController(frontend_sub_queue, app_pub_queue)
 
     calculation_sub_queue = asyncio.Queue()
     calculation = CalculationComponent(
@@ -141,7 +142,7 @@ if __name__ == "__main__":
     )
 
     # === Initialize the app ===
-    components = [ws, calculation, frontend, adc]  # Add all components to this array
+    components = [ws, calculation, adc, motor]  # Add all components to this array
     app = App(*components, pub_queue=app_pub_queue)
 
     # === Add queue subscriptions ===
@@ -151,16 +152,16 @@ if __name__ == "__main__":
     )
 
     # Uncomment this if using motor component
-    # app.registerSub(["motor/command"], motor_sub_queue)
+    app.registerSub(["motor/command"], motor_sub_queue)
 
     # Uncomment this if using lcd
     # app.registerSub(["fft/data"], lcd_sub_queue)
 
     # Only uncomment this if using PiPlate or Virtual ADC
-    app.registerSub(["adc/command"], adc_sub_queue)
+    # app.registerSub(["adc/command"], adc_sub_queue)
 
     # Uncomment this if using Frontend
-    app.registerSub(["voltage/data", "fft_mags/data"], frontend_sub_queue)
+    # app.registerSub(["voltage/data", "fft_mags/data"], frontend_sub_queue)
 
     logger.info("starting app")
     asyncio.run(app.run())

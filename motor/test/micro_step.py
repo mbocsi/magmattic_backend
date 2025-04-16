@@ -6,9 +6,7 @@ LED_PIN = 13  # GPIO1 (BCM numbering) – double-check your wiring!
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(LED_PIN, GPIO.OUT)
 
-# Create PWM instance with desired frequency
-# For example, 50 kHz => period = 20 microseconds (10us HIGH, 10us LOW)
-pwm = GPIO.PWM(LED_PIN, 50000)  # 50 kHz
+pwm = GPIO.PWM(LED_PIN, 200)
 
 try:
     pwm.start(50)  # 50% duty cycle → 10us ON, 10us OFF
