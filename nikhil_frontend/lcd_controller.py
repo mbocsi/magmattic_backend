@@ -6,6 +6,7 @@ import RPi.GPIO as GPIO
 from RPLCD.i2c import CharLCD
 from .lcd_interface import LCDInterface
 import piplates.ADCplate as ADC
+import numpy as np
 
 logger = logging.getLogger(__name__ + ".LCDController")
 
@@ -60,6 +61,7 @@ class LCDController(LCDInterface):
         self.fft_data = []
         self.last_voltage = 0.0
         self.b_field = 0.0  # Magnetic field in Tesla
+        self.freq = 0.0
         self.data_acquisition_time = DEFAULT_DAT
         self.last_pot_value = 500  # Middle position by default
         self.peak_freq = 0.0
@@ -330,26 +332,11 @@ class LCDController(LCDInterface):
 
                 try:
                     # Process voltage data
-                    if data["topic"] == "voltage/data":
-                        if (
-                            isinstance(data["payload"], list)
-                            and len(data["payload"]) > 0
-                        ):
-                            # Store voltage values
-                            voltage = data["payload"][0]
-                            self.last_voltage = voltage
-                            self.voltage_buffer.append(voltage)
-                            self.b_field = self.calculate_b_field(voltage)
-
-                    # Process FFT data
-                    elif data["topic"] == "fft_mags/data":
-                        self.fft_data = data["payload"]  # List of [freq, magnitude]
-
-                        # Calculate peak
-                        if self.fft_data:
-                            self.peak_freq, self.peak_mag = self.calculate_peak(
-                                self.fft_data
-                            )
+                    if data["topic"] == "signal/data":
+                        self.last_voltage = data["payload"]["mag"]
+                        bfield_vector = np.array(data["payload"]["bfield"])
+                        self.b_field = np.linalg.norm(bfield_vector)
+                        self.freq = data["payload"]["freq"]
 
                     # Update display if not in adjusting state
                     if (
@@ -357,13 +344,7 @@ class LCDController(LCDInterface):
                         and self.current_state != State.OFF
                         and self.display_active
                     ):
-                        current_time = time.time()
-                        if (
-                            current_time - self.last_display_update
-                            >= self.display_update_interval
-                        ):
-                            await self.update_display_with_state()
-                            self.last_display_update = current_time
+                        await self.update_display_with_state()
 
                 except Exception as e:
                     logger.error(f"Error processing data: {e}")
@@ -380,22 +361,21 @@ class LCDController(LCDInterface):
             logger.error(f"Error in data processing task: {e}")
 
     async def update_display(self, line1: str, line2: str) -> None:
-        """Update both lines of the LCD display"""
+        """Update both lines of the LCD display without clearing"""
         if not self.display_active or not self.lcd:
             return
 
         try:
-            # Clear with adequate delay
-            self.lcd.clear()
-            await asyncio.sleep(0.05)
+            line1 = line1.ljust(LCD_WIDTH)[:LCD_WIDTH]
+            line2 = line2.ljust(LCD_WIDTH)[:LCD_WIDTH]
 
             # Write first line
             self.lcd.cursor_pos = (0, 0)
-            self.lcd.write_string(line1[:LCD_WIDTH])
+            self.lcd.write_string(line1)
 
             # Write second line
             self.lcd.cursor_pos = (1, 0)
-            self.lcd.write_string(line2[:LCD_WIDTH])
+            self.lcd.write_string(line2)
 
         except Exception as e:
             logger.error(f"Display update failed: {e}")
@@ -418,7 +398,7 @@ class LCDController(LCDInterface):
                 if not self.fft_data:
                     await self.update_display("FFT View", "No data yet")
                 else:
-                    peak_freq, peak_mag = self.calculate_peak(self.fft_data)
+                    peak_freq, peak_mag = self.freq, self.last_voltage
                     await self.update_display(
                         f"Peak: {peak_freq:.1f}Hz", f"Mag: {peak_mag:.6f}V"
                     )
@@ -434,32 +414,6 @@ class LCDController(LCDInterface):
 
         except Exception as e:
             logger.error(f"Error updating display with state: {e}")
-
-    def calculate_peak(self, fft_data) -> tuple[float, float]:
-        """Calculate the peak frequency and magnitude from FFT data"""
-        if not fft_data:
-            return (0.0, 0.0)
-
-        # Find the point with maximum magnitude
-        return max(fft_data, key=lambda x: x[1])
-
-    def calculate_b_field(self, voltage: float) -> float:
-        """Calculate magnetic field strength (Tesla) using Faraday's law"""
-        if not self.fft_data:
-            # Default to 50Hz if no FFT data yet
-            omega = 2 * 3.14159 * 50.0  # Default angular frequency (ω = 2πf)
-        else:
-            # Get frequency from FFT peak for more accurate calculation
-            peak_freq, _ = self.calculate_peak(self.fft_data)
-            omega = 2 * 3.14159 * peak_freq  # Angular frequency ω = 2πf
-
-        # Apply Faraday's law: voltage = N * Area * dB/dt
-        # For sinusoidal field, B = V / (N * A * ω)
-        b_field = voltage / (
-            self.coil_props["windings"] * self.coil_props["area"] * omega
-        )
-
-        return b_field
 
     def format_magnetic_field(self, value: float) -> str:
         """Format magnetic field value with appropriate unit (T, mT, μT)"""
