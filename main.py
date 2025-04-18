@@ -11,7 +11,7 @@ from app_interface import AppComponent
 # from lcd import LCDComponent, VirtualLCDComponent  # Deprecated: don't use
 from motor import MotorComponent, VirtualMotorComponent
 
-from nikhil_frontend import LCDController  # Please rename this package
+# from nikhil_frontend import LCDController  # Please rename this package
 from ws import WebSocketComponent
 from type_defs import ADCStatus, CalculationStatus, Message
 import time
@@ -136,8 +136,8 @@ if __name__ == "__main__":
     # lcd = VirtualLCDComponent(sub_queue=lcd_sub_queue)
 
     # === Initialize Frontend ===
-    frontend_sub_queue = asyncio.Queue()
-    frontend = LCDController(frontend_sub_queue, app_pub_queue)
+    # frontend_sub_queue = asyncio.Queue()
+    # frontend = LCDController(frontend_sub_queue, app_pub_queue)
 
     calculation_sub_queue = asyncio.Queue()
     calculation = CalculationComponent(
@@ -154,7 +154,7 @@ if __name__ == "__main__":
         calculation,
         motor,
         adc,
-        frontend,
+        # frontend,
     ]  # Add all components to this array
     app = App(*components, pub_queue=app_pub_queue)
 
@@ -174,7 +174,7 @@ if __name__ == "__main__":
     # app.registerSub(["adc/command"], adc_sub_queue)
 
     # Uncomment this if using Frontend
-    app.registerSub(["signal/data"], frontend_sub_queue)
+    # app.registerSub(["signal/data"], frontend_sub_queue)
 
     logger.info("starting app")
     asyncio.run(app.run())

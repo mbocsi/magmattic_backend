@@ -311,13 +311,11 @@ class LCDController(LCDInterface):
             # Send control message to ADC component to update sampling parameters
             control_msg = {
                 "topic": "calculation/command",
-                "payload": {
-                    "acquisition_time": self.data_acquisition_time  # Convert to appropriate sample rate
-                },
+                "payload": {"acquisition_time": self.data_acquisition_time},
             }
             await self.q_control.put(control_msg)
             logger.info(
-                f"Sent new acquisition time: {self.data_acquisition_time}s (sample rate: {control_msg['payload']['sample_rate']})"
+                f"Sent new acquisition time: {self.data_acquisition_time}s (sample rate: {control_msg['payload']['acquisition_time']})"
             )
         except Exception as e:
             logger.error(f"Error sending acquisition time update: {e}")

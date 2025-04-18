@@ -66,6 +66,9 @@ class CalculationComponent(AppComponent):
         magnitude = np.abs(fft)
         phase = np.angle(fft)
 
+        # shift domain to [0, 2pi)
+        phase = phase + np.pi
+
         magnitude[1:-1] = 2 * magnitude[1:-1]
 
         freq = np.fft.rfftfreq(self.Ntot, d=T / self.Nsig)
@@ -139,9 +142,9 @@ class CalculationComponent(AppComponent):
         )
 
         # Wrap back to [0, 2π]
-        # motor_theta_interp = np.mod(motor_theta_interp, 2 * np.pi).tolist()
+        motor_theta_interp = np.mod(motor_theta_interp, 2 * np.pi).tolist()
         # Wrap between -pi and pi
-        motor_theta_interp = (motor_theta_interp + np.pi) % (2 * np.pi) - np.pi
+        # motor_theta_interp = (motor_theta_interp + np.pi) % (2 * np.pi) - np.pi
 
         # Extend buffers
         self.voltage_data.extend(buffer)
@@ -171,7 +174,8 @@ class CalculationComponent(AppComponent):
         # Adjust phase angle based on initial motor position at
         # logger.info(phase[:10])
         # Wrap between -pi and pi
-        phase[:, 1] = (phase[:, 1] + init_motor_theta + np.pi) % (2 * np.pi) - np.pi
+        # phase[:, 1] = (phase[:, 1] + init_motor_theta + np.pi) % (2 * np.pi) - np.pi
+        phase[:, 1] = np.mod(phase[:, 1] + init_motor_theta, 2 * np.pi)
         # logger.info(phase[:10])
 
         # Find signals
