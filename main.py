@@ -115,16 +115,18 @@ if __name__ == "__main__":
         pub_queue=app_pub_queue, sub_queue=ws_sub_queue, host="0.0.0.0", port=44444
     )
 
-    # === Initialize ADC controller (PiPlate or Virtual ADC Only! Comment out if using ESP32) ===
-    adc_sub_queue = asyncio.Queue()
-    # adc = ADCComponent(pub_queue=app_pub_queue, sub_queue=adc_sub_queue)
-    adc = VirtualADCComponent(pub_queue=app_pub_queue, sub_queue=adc_sub_queue)
-
     # === Initialize Motor Controller ===
     motor_sub_queue = asyncio.Queue()
     # motor = MotorComponent(data_queue, motor_control_queue)
     motor = VirtualMotorComponent(
         pub_queue=app_pub_queue, sub_queue=motor_sub_queue, init_speed=5
+    )
+
+    # === Initialize ADC controller (PiPlate or Virtual ADC Only! Comment out if using ESP32) ===
+    adc_sub_queue = asyncio.Queue()
+    # adc = ADCComponent(pub_queue=app_pub_queue, sub_queue=adc_sub_queue)
+    adc = VirtualADCComponent(
+        pub_queue=app_pub_queue, sub_queue=adc_sub_queue, motor_component=motor
     )
 
     # === Initialize LCD Component ===
@@ -138,16 +140,20 @@ if __name__ == "__main__":
 
     calculation_sub_queue = asyncio.Queue()
     calculation = CalculationComponent(
-        pub_queue=app_pub_queue, sub_queue=calculation_sub_queue, Nsig=1200, Ntot=1200
+        pub_queue=app_pub_queue,
+        sub_queue=calculation_sub_queue,
+        motor_component=motor,
+        Nsig=1200,
+        Ntot=1200,
     )
 
     # === Initialize the app ===
-    components = [ws, calculation, adc, motor]  # Add all components to this array
+    components = [ws, calculation, motor, adc]  # Add all components to this array
     app = App(*components, pub_queue=app_pub_queue)
 
     # === Add queue subscriptions ===
     app.registerSub(
-        ["voltage/data", "calculation/command", "adc/status", "motor/data"],
+        ["voltage/data", "calculation/command", "adc/status"],
         calculation_sub_queue,
     )
 

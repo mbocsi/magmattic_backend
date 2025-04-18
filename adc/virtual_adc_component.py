@@ -3,16 +3,29 @@ import asyncio
 import numpy as np
 import logging
 import time
-import threading
+from motor import BaseMotorComponent
 
 logger = logging.getLogger(__name__)
 
-frequencies = np.array([[0, 0.1], [5, 1], [20, 0.05], [60.1, 0.1]])
+frequencies = np.array([[0, 0.1], [1, 1], [4, 0.05], [12, 0.1]])
 
 
 class VirtualADCComponent(BaseADCComponent):
+    def __init__(
+        self,
+        pub_queue: asyncio.Queue,
+        sub_queue: asyncio.Queue,
+        motor_component: BaseMotorComponent,
+        addr: int = 0,
+        pin: str = "D0",
+        sample_rate: int = 1200,
+        Nbuf: int = 32,
+    ):
+        super().__init__(pub_queue, sub_queue, addr, pin, sample_rate, Nbuf)
+        self.motor_component = motor_component
+
     @classmethod
-    def add_noise(cls, signal, noise_type="gaussian", noise_level=0.1):
+    def add_noise(cls, signal, noise_type="gaussian", noise_level=0.1) -> list[float]:
         """Adds noise to a signal.
 
         Args:
@@ -51,28 +64,30 @@ class VirtualADCComponent(BaseADCComponent):
         return noisy_signal.tolist()
 
     @classmethod
-    async def sin_stream(cls, angles, n, sample_rate):
-        delay = 1 / float(sample_rate)
-        data = []
-        for _ in range(n):
-            startTime = time.perf_counter()
-            angles = (
-                angles + (2 * np.pi * frequencies[:, [0]].T * (1 / float(sample_rate)))
-            ) % (2 * np.pi)
-
-            signal = np.sum(frequencies[:, [1]].T * np.sin(angles))
-            data.append(signal)
-            await asyncio.sleep(max(0, delay - (time.perf_counter() - startTime)))
-        return angles, VirtualADCComponent.add_noise(data, noise_level=0.2)
+    def sin_at_angle(cls, theta, frequencies):
+        """
+        Calculate voltage at given angle `theta` based on multiple sine sources.
+        `theta` is a scalar (motor angle in radians).
+        `frequencies`: shape (num_components, 2), with [ [freq1, amp1], [freq2, amp2], ... ]
+        """
+        phase = (
+            2 * np.pi * frequencies[:, 0] * theta / (2 * np.pi)
+        )  # or just `frequencies[:, 0] * theta`
+        signal = np.sum(frequencies[:, 1] * np.sin(phase))
+        return signal
 
     async def stream_adc(self) -> None:
-        angles = np.zeros((1, frequencies.shape[0]))
         try:
             while True:
-                angles, values = await VirtualADCComponent.sin_stream(
-                    angles, self.Nbuf, self.sample_rate
-                )
-                self.send_voltage(values)
+                voltages = []
+                for _ in range(self.Nbuf):
+                    theta = self.motor_component.theta
+                    v = VirtualADCComponent.sin_at_angle(theta, frequencies)
+                    voltages.append(v)
+                    await asyncio.sleep(1 / self.sample_rate)
+
+                voltages = VirtualADCComponent.add_noise(voltages, noise_level=0.2)
+                self.send_voltage(voltages)
                 await asyncio.sleep(0)
         except asyncio.CancelledError:
             logger.debug("stream_adc() cancelled")

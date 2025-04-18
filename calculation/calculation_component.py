@@ -7,6 +7,7 @@ import math
 from scipy.signal import find_peaks
 from .windows import windows
 from type_defs import Window, CalculationStatus
+from motor import BaseMotorComponent
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,7 @@ class CalculationComponent(AppComponent):
         self,
         pub_queue: asyncio.Queue,
         sub_queue: asyncio.Queue,
+        motor_component: BaseMotorComponent,
         Nsig: int = 1024,
         Ntot: int = 1024,
         rolling_fft: bool = False,
@@ -37,6 +39,7 @@ class CalculationComponent(AppComponent):
     ):
         self.pub_queue = pub_queue
         self.sub_queue = sub_queue
+        self.motor_component = motor_component
         self.Nsig = Nsig
         self.Ntot = Ntot
         self.rolling_fft = rolling_fft
@@ -45,7 +48,6 @@ class CalculationComponent(AppComponent):
         self.voltage_data: deque[float] = deque(maxlen=Nsig)
 
         self.coil_props = parse_coil_props(coil_props)
-        self.motor_theta = 0
         self.motor_theta_buf: deque[float] = deque(maxlen=Nsig)
         self.last_motor_theta = None
         self.min_snr = 5
@@ -120,7 +122,7 @@ class CalculationComponent(AppComponent):
 
     def process_voltage_data(self, data, loop):
         buffer = data["payload"]
-        theta_now = self.motor_theta
+        theta_now = self.motor_component.theta
         theta_prev = (
             self.last_motor_theta if self.last_motor_theta is not None else theta_now
         )
@@ -137,7 +139,9 @@ class CalculationComponent(AppComponent):
         )
 
         # Wrap back to [0, 2π]
-        motor_theta_interp = np.mod(motor_theta_interp, 2 * np.pi).tolist()
+        # motor_theta_interp = np.mod(motor_theta_interp, 2 * np.pi).tolist()
+        # Wrap between -pi and pi
+        motor_theta_interp = (motor_theta_interp + np.pi) % (2 * np.pi) - np.pi
 
         # Extend buffers
         self.voltage_data.extend(buffer)
@@ -151,14 +155,24 @@ class CalculationComponent(AppComponent):
 
         init_motor_theta = self.motor_theta_buf[0]
 
+        # logger.info(init_motor_theta)
+
         # Calculate the OBSERVED average angular velocity
         theta = np.unwrap(np.array(self.motor_theta_buf))
         T = self.Nsig / self.sample_rate
         obs_motor_omega = (theta[-1] - theta[0]) / T
         obs_motor_freq = obs_motor_omega / (2 * math.pi)
 
+        # logger.info(obs_motor_freq)
+
         # Calculate FFT
         magnitude, phase = self.calc_fft(self.voltage_data, T)
+
+        # Adjust phase angle based on initial motor position at
+        # logger.info(phase[:10])
+        # Wrap between -pi and pi
+        phase[:, 1] = (phase[:, 1] + init_motor_theta + np.pi) % (2 * np.pi) - np.pi
+        # logger.info(phase[:10])
 
         # Find signals
         peaks = self.peaks(magnitude, phase, min_snr=self.min_snr)
@@ -171,7 +185,7 @@ class CalculationComponent(AppComponent):
         peaks = np.hstack((peaks, voltage_amplitudes))
 
         # Adjust phase angle based on initial motor position at
-        peaks[:, 2] = np.mod(peaks[:, 2] + init_motor_theta, 2 * np.pi)
+        # peaks[:, 2] = np.mod(peaks[:, 2] + init_motor_theta, 2 * np.pi)
 
         # Find bfield of signals
         bfields = np.zeros((peaks.shape[0], 2))
@@ -225,15 +239,13 @@ class CalculationComponent(AppComponent):
             self.pub_queue.put_nowait,
             {
                 "topic": "signal/data",
-                "payload": [
-                    {
-                        "freq": signal[0],
-                        "mag": signal[1],
-                        "phase": signal[2],
-                        "ampl": signal[3],
-                        "bfield": signal[4:].tolist(),
-                    }
-                ],
+                "payload": {
+                    "freq": signal[0],
+                    "mag": signal[1],
+                    "phase": signal[2],
+                    "ampl": signal[3],
+                    "bfield": signal[4:].tolist(),
+                },
             },
         )
 
@@ -255,8 +267,6 @@ class CalculationComponent(AppComponent):
                         asyncio.create_task(asyncio.to_thread(self.control, data, loop))
                     case "adc/status":
                         self.sample_rate = data["payload"]["sample_rate"]
-                    case "motor/data":
-                        self.motor_theta = data["payload"]["theta"]
                     case _:
                         logger.warning(f"unknown topic received: {data['topic']}")
                 # endTime = time.perf_counter()
