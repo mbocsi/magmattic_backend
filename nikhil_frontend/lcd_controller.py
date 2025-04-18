@@ -395,13 +395,12 @@ class LCDController(LCDInterface):
                 )
 
             elif self.current_state == State.FFT:
-                if not self.fft_data:
+                if not self.freq or not self.last_voltage:
                     await self.update_display("FFT View", "No data yet")
-                else:
-                    peak_freq, peak_mag = self.freq, self.last_voltage
-                    await self.update_display(
-                        f"Peak: {peak_freq:.1f}Hz", f"Mag: {peak_mag:.6f}V"
-                    )
+                peak_freq, peak_mag = self.freq, self.last_voltage
+                await self.update_display(
+                    f"Peak: {peak_freq:.1f}Hz", f"Mag: {peak_mag:.6f}V"
+                )
 
             elif self.current_state == State.ADJUSTING:
                 time_str = self.format_time(self.data_acquisition_time)
