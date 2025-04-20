@@ -13,7 +13,7 @@ from motor import MotorComponent, VirtualMotorComponent
 
 # from nikhil_frontend import LCDController  # Please rename this package
 from ws import WebSocketComponent
-from type_defs import ADCStatus, CalculationStatus, Message
+from type_defs import ADCStatus, CalculationStatus, Message, MotorStatus
 import time
 
 logger = logging.getLogger(__name__)
@@ -30,6 +30,7 @@ class App:
         self.subs: dict[str, list[asyncio.Queue]] = defaultdict(lambda: [])
         self.adc_status: ADCStatus | None = None
         self.calculation_status: CalculationStatus | None = None
+        self.motor_status: MotorStatus | None = None
 
     def registerSub(self, topics: list[str] | str, sub_queue: asyncio.Queue) -> None:
         for topic in topics:
@@ -47,6 +48,13 @@ class App:
                         {
                             "topic": "calculation/status",
                             "payload": self.calculation_status,
+                        }
+                    )
+                elif self.motor_status is not None and topic == "motor/status":
+                    sub_queue.put_nowait(
+                        {
+                            "topic": "calculation/status",
+                            "payload": self.motor_status,
                         }
                     )
 
@@ -85,6 +93,11 @@ class App:
                     case "calculation/status":
                         check_type(data["payload"], CalculationStatus)
                         self.calculation_status = data["payload"]
+                        for queue in self.subs.get(data["topic"], []):
+                            queue.put_nowait(data)
+                    case "motor/status":
+                        check_type(data["payload"], MotorStatus)
+                        self.motor_status = data["payload"]
                         for queue in self.subs.get(data["topic"], []):
                             queue.put_nowait(data)
                     case _:

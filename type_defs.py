@@ -16,6 +16,10 @@ class CalculationStatus(TypedDict):
     min_snr: int
 
 
+class MotorStatus(TypedDict):
+    freq: float
+
+
 class VoltageMessage(TypedDict):
     topic: str
     payload: list[float]

@@ -2,6 +2,7 @@ from app_interface import AppComponent
 import asyncio
 import logging
 from abc import abstractmethod
+from type_defs import MotorStatus
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +49,12 @@ class BaseMotorComponent(AppComponent):
             {"topic": "motor/data", "payload": {"freq": freq, "theta": theta}}
         )
 
+    def getStatus(self) -> MotorStatus:
+        return {"freq": self.freq}
+
     async def run(self) -> None:
         logger.info("starting motor")
+        await self.pub_queue.put({"topic": "motor/status", "payload": self.getStatus()})
         self.stream_task = asyncio.create_task(self.stream_data())
         control_task = asyncio.create_task(self.recv_control())
         await control_task
