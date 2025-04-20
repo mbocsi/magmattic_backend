@@ -131,10 +131,10 @@ if __name__ == "__main__":
 
     # === Initialize Motor Controller ===
     motor_sub_queue = asyncio.Queue()
-    # motor = MotorComponent(data_queue, motor_control_queue)
-    motor = VirtualMotorComponent(
-        pub_queue=app_pub_queue, sub_queue=motor_sub_queue, init_speed=5
-    )
+    motor = MotorComponent(pub_queue=app_pub_queue, sub_queue=motor_sub_queue, init_speed=5)
+    # motor = VirtualMotorComponent(
+    #    pub_queue=app_pub_queue, sub_queue=motor_sub_queue, init_speed=5
+    # )
 
     # === Initialize ADC controller (PiPlate or Virtual ADC Only! Comment out if using ESP32) ===
     adc_sub_queue = asyncio.Queue()
