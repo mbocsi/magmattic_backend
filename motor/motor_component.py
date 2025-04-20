@@ -9,7 +9,9 @@ logger = logging.getLogger(__name__)
 
 class MotorComponent(BaseMotorComponent):
 
-    def __init__(self, pub_queue: asyncio.Queue, sub_queue: asyncio.Queue, init_speed=5):
+    def __init__(
+        self, pub_queue: asyncio.Queue, sub_queue: asyncio.Queue, init_speed=5
+    ):
         super().__init__(pub_queue, sub_queue, init_speed)
         import RPi.GPIO as GPIO  # type: ignore
 
@@ -43,7 +45,7 @@ class MotorComponent(BaseMotorComponent):
         except asyncio.CancelledError:
             logger.debug("stream_data() was cancelled")
         except ValueError as e:
-            logger.info(f"Value error: {e}")
+            logger.error(f"Value error: {e}")
         except Exception as e:
             logger.error(f"An unexpected exception was raised: {e}")
         finally:
