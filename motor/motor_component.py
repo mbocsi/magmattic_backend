@@ -9,8 +9,8 @@ logger = logging.getLogger(__name__)
 
 class MotorComponent(BaseMotorComponent):
 
-    def __init__(self, *args, **kargs):
-        super.__init__(*args, **kargs)
+    def __init__(self, pub_queue: asyncio.Queue, sub_queue: asyncio.Queue, init_speed=5):
+        super().__init__(pub_queue, sub_queue, init_speed)
         import RPi.GPIO as GPIO  # type: ignore
 
         self.GPIO = GPIO
@@ -31,7 +31,7 @@ class MotorComponent(BaseMotorComponent):
             delta_theta = np.sign(self.freq) * (np.pi * 2) / STEPS_PER_REV
 
             self.GPIO.output(ENA, self.GPIO.LOW)
-            self.GPIO.output(DIR, np.sign(self.freq))
+            self.GPIO.output(DIR, bool(max(0, np.sign(self.freq))))
             pulse_pin.start(DUTY)
 
             # TODO: convert this loop into a interrupt routine on the pulse pin
@@ -43,7 +43,7 @@ class MotorComponent(BaseMotorComponent):
         except asyncio.CancelledError:
             logger.debug("stream_data() was cancelled")
         except ValueError as e:
-            logger.debug(f"Value error: {e}")
+            logger.info(f"Value error: {e}")
         except Exception as e:
             logger.error(f"An unexpected exception was raised: {e}")
         finally:
