@@ -39,6 +39,9 @@ class BaseMotorComponent(AppComponent):
                 ):  # Need to restart adc stream
                     self.stream_task.cancel()
                     self.stream_task = asyncio.create_task(self.stream_data())
+                self.pub_queue.put_nowait(
+                    {"topic": "motor/status", "payload": self.getStatus()}
+                )
             except AttributeError:
                 logger.warning(f"Unknown control attribute: {var}")
                 for var, value in original_values.items():

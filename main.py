@@ -8,13 +8,11 @@ from calculation import CalculationComponent
 from adc import ADCComponent, VirtualADCComponent
 from app_interface import AppComponent
 
-# from lcd import LCDComponent, VirtualLCDComponent  # Deprecated: don't use
 from motor import MotorComponent, VirtualMotorComponent
 
 # from nikhil_frontend import LCDController  # Please rename this package
 from ws import WebSocketComponent
 from type_defs import ADCStatus, CalculationStatus, Message, MotorStatus
-import time
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +51,7 @@ class App:
                 elif self.motor_status is not None and topic == "motor/status":
                     sub_queue.put_nowait(
                         {
-                            "topic": "calculation/status",
+                            "topic": "motor/status",
                             "payload": self.motor_status,
                         }
                     )
