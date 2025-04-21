@@ -21,6 +21,13 @@ class App:
         *deps: AppComponent,
         pub_queue: asyncio.Queue,
     ) -> None:
+        """
+        Main application orchestrator that wires components together and routes messages.
+
+        Args:
+            *deps: List of AppComponent instances to run.
+            pub_queue (asyncio.Queue): Central queue where all components publish messages.
+        """
         self.deps = deps
         self.pub_queue = pub_queue
         self.subs: dict[str, list[asyncio.Queue]] = defaultdict(lambda: [])
@@ -29,6 +36,14 @@ class App:
         self.motor_status: MotorStatus | None = None
 
     def registerSub(self, topics: list[str] | str, sub_queue: asyncio.Queue) -> None:
+        """
+        Registers a queue to receive messages published on specific topics.
+        Automatically pushes latest status messages to the subscriber if available.
+
+        Args:
+            topics (list[str] | str): Topics to subscribe to.
+            sub_queue (asyncio.Queue): Queue to forward matching messages to.
+        """
         for topic in topics:
             if sub_queue not in self.subs[topic]:
                 self.subs[topic].append(sub_queue)
@@ -61,6 +76,12 @@ class App:
         logger.info(f"added subscriber to topics: {topics}")
 
     def deleteSub(self, sub_queue: asyncio.Queue):
+        """
+        Removes a queue from all topic subscriptions.
+
+        Args:
+            sub_queue (asyncio.Queue): The queue to unsubscribe.
+        """
         deletedTopics = []
         for topic in self.subs.keys():
             if sub_queue in self.subs[topic]:
@@ -69,6 +90,10 @@ class App:
         logger.info(f"Removed subscriber from topics: {deletedTopics}")
 
     async def broker(self) -> None:
+        """
+        Central message broker that routes incoming messages from components
+        to all queues subscribed to the corresponding topic.
+        """
         while True:
             try:
                 data = await self.pub_queue.get()
@@ -106,6 +131,9 @@ class App:
                 logger.error(f"There was an unexpected error in broker: {e}")
 
     async def run(self) -> None:
+        """
+        Starts all components concurrently along with the broker.
+        """
         await asyncio.gather(*[dep.run() for dep in self.deps], self.broker())
 
 

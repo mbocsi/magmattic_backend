@@ -12,20 +12,42 @@ class WebSocketComponent(AppComponent):
     def __init__(
         self, pub_queue: asyncio.Queue, sub_queue: asyncio.Queue, host: str, port: int
     ):
+        """
+        WebSocket component for handling bi-directional communication with connected clients.
+
+        Args:
+            pub_queue (asyncio.Queue): Queue for publishing messages to other components.
+            sub_queue (asyncio.Queue): Queue for receiving messages (not used here).
+            host (str): Host IP address to bind the WebSocket server to.
+            port (int): Port number to listen on.
+        """
         self.pub_queue: asyncio.Queue = pub_queue
         self.sub_queue: asyncio.Queue = sub_queue
         self.host = host
         self.port = port
-        self.conn_data: dict[ServerConnection, asyncio.Queue] = (
-            {}
-        )  # Store data subscribers
+
+        # Maps active connections to their individual outbound queues
+        self.conn_data: dict[ServerConnection, asyncio.Queue] = {}
 
     async def send(self, ws) -> None:
+        """
+        Sends messages from the internal queue to a specific WebSocket client.
+
+        Args:
+            ws: WebSocket connection instance.
+        """
         while True:
             data = await self.conn_data[ws].get()  # Wait for new data
             await ws.send(json.dumps(data))  # Might not need to await
 
     async def recv(self, ws) -> None:
+        """
+        Receives and processes messages from a WebSocket client.
+        If message is a subscription request, injects the client's queue.
+
+        Args:
+            ws: WebSocket connection instance.
+        """
         while True:
             data = await ws.recv()
             try:
@@ -39,11 +61,18 @@ class WebSocketComponent(AppComponent):
                 logger.warning(f"Error decoding JSON: {e}")
 
     async def handle(self, ws) -> None:
+        """
+        Handles a new WebSocket client connection. Starts tasks for sending and receiving.
+
+        Args:
+            ws: WebSocket connection instance.
+        """
         logger.info(
             f"client connected-> uuid={ws.id} remote_addr={ws.remote_address} local_addr={ws.local_address}"
         )
-        # Add new data subscriber
-        self.conn_data[ws] = asyncio.Queue()
+
+        self.conn_data[ws] = asyncio.Queue()  # Initialize client queue
+
         # Start the async coroutines
         send_task = asyncio.create_task(self.send(ws))
         receive_task = asyncio.create_task(self.recv(ws))
@@ -67,6 +96,9 @@ class WebSocketComponent(AppComponent):
             await asyncio.gather(send_task, receive_task, return_exceptions=True)
 
     async def run(self) -> None:
+        """
+        Entry point for starting the WebSocket server. Binds to the host and port.
+        """
         logger.info("starting WS server")
         async with serve(self.handle, self.host, self.port) as server:
             await server.serve_forever()
