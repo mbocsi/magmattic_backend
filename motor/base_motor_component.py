@@ -87,7 +87,7 @@ class BaseMotorComponent(AppComponent):
         """
         Starts the motor component, launches streaming and control coroutines.
         """
-        logger.info("starting motor")
+        logger.info(f"starting motor: {type(self).__name__}")
         await self.pub_queue.put({"topic": "motor/status", "payload": self.getStatus()})
         self.stream_task = asyncio.create_task(self.stream_data())
         control_task = asyncio.create_task(self.recv_control())

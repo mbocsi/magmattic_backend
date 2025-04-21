@@ -6,7 +6,6 @@ from collections import deque
 
 from RPLCD.i2c import CharLCD
 from app_interface import AppComponent
-import piplates.ADCplate as ADC
 from .pui_config import *
 
 logger = logging.getLogger(__name__)
@@ -21,8 +20,10 @@ class PUIComponent(AppComponent):
     def __init__(self, q_data: asyncio.Queue, q_control: asyncio.Queue):
         """Initialize the LCD controller with data and control queues"""
         import RPi.GPIO as GPIO
+        import piplates.ADCplate as ADC
 
         self.GPIO = GPIO
+        self.ADC = ADC
 
         self.q_data = q_data
         self.q_control = q_control
@@ -80,7 +81,7 @@ class PUIComponent(AppComponent):
 
             # Get initial potentiometer reading for DAT
             try:
-                raw_value = ADC.getADC(0, POT_DAT)
+                raw_value = self.ADC.getADC(0, POT_DAT)
                 pot_value = min(1023, int(raw_value * 1023 / 5.0))
                 self.last_pot_value = pot_value
 
@@ -181,7 +182,7 @@ class PUIComponent(AppComponent):
             while True:
                 try:
                     # Direct ADC reading - exactly like simple_lcd_test.py
-                    raw_value = ADC.getADC(0, POT_DAT)
+                    raw_value = self.ADC.getADC(0, POT_DAT)
                     pot_value = min(1023, int(raw_value * 1023 / 5.0))
 
                     # Check if potentiometer value has changed significantly
@@ -409,6 +410,8 @@ class PUIComponent(AppComponent):
 
     async def run(self) -> None:
         """Main run loop"""
+
+        logger.info("starting pui")
         tasks = []
 
         try:

@@ -98,7 +98,7 @@ class BaseADCComponent(AppComponent):
         Main entrypoint for the component.
         Starts the ADC stream and control listener concurrently.
         """
-        logger.info("starting adc")
+        logger.info(f"starting adc: {type(self).__name__}")
         await self.pub_queue.put({"topic": "adc/status", "payload": self.getStatus()})
         self.stream_task = asyncio.create_task(self.stream_adc())
         control_task = asyncio.create_task(self.recv_control())

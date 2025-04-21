@@ -2,6 +2,7 @@ import asyncio
 import logging
 from collections import defaultdict
 from typeguard import check_type, TypeCheckError
+import argparse
 
 
 from app_interface import AppComponent
@@ -138,11 +139,32 @@ class App:
 
 
 if __name__ == "__main__":
+    # === Command-line arguments ===
+    parser = argparse.ArgumentParser(description="Start the Magmattic application.")
+    parser.add_argument(
+        "--dev", action="store_true", help="Run in local development mode"
+    )
+    parser.add_argument(
+        "--adc-mode", choices=["none", "virtual", "piplate"], help="Specify ADC mode"
+    )
+    parser.add_argument(
+        "--motor-mode", choices=["virtual", "physical"], help="Specify motor type"
+    )
+    parser.add_argument(
+        "--pui-mode", choices=["enable", "disable"], help="Enable or disable PUI"
+    )
+    args = parser.parse_args()
+
     # === Logging settings ===
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)-7s %(name)-35s %(message)s",
     )
+
+    # === Resolve effective configuration ===
+    motor_mode = args.motor_mode or ("virtual" if args.dev else "physical")
+    adc_mode = args.adc_mode or ("virtual" if args.dev else "none")
+    use_pui = (args.pui_mode == "enable") if args.pui_mode else not args.dev
 
     # === Initialize App queues ===
     app_pub_queue = asyncio.Queue()
@@ -155,24 +177,35 @@ if __name__ == "__main__":
 
     # === Initialize Motor Controller ===
     motor_sub_queue = asyncio.Queue()
-    # motor = MotorComponent(
-    #     pub_queue=app_pub_queue, sub_queue=motor_sub_queue, init_speed=5
-    # )
-    motor = VirtualMotorComponent(
-        pub_queue=app_pub_queue, sub_queue=motor_sub_queue, init_speed=5
-    )
+    if motor_mode == "virtual":
+        motor = VirtualMotorComponent(
+            pub_queue=app_pub_queue, sub_queue=motor_sub_queue, init_speed=5
+        )
+    else:
+        motor = MotorComponent(
+            pub_queue=app_pub_queue, sub_queue=motor_sub_queue, init_speed=5
+        )
+    logger.info(f"Initialized motor type: {type(motor).__name__}")
 
-    # === Initialize ADC controller (PiPlate or Virtual ADC Only! Comment out if using ESP32) ===
+    # === Initialize ADC controller ===
     adc_sub_queue = asyncio.Queue()
-    # adc = ADCComponent(pub_queue=app_pub_queue, sub_queue=adc_sub_queue)
-    adc = VirtualADCComponent(
-        pub_queue=app_pub_queue, sub_queue=adc_sub_queue, motor_component=motor
-    )
+    adc = None
+    if adc_mode == "piplate":
+        adc = ADCComponent(pub_queue=app_pub_queue, sub_queue=adc_sub_queue)
+    elif adc_mode == "virtual":
+        adc = VirtualADCComponent(
+            pub_queue=app_pub_queue, sub_queue=adc_sub_queue, motor_component=motor
+        )
+    if adc:
+        logger.info(f"Initialized ADC type: {type(adc).__name__}")
 
-    # === Initialize Frontend ===
+    # === Initialize PUI ===
     pui_sub_queue = asyncio.Queue()
-    pui = PUIComponent(pui_sub_queue, app_pub_queue)
+    pui = None
+    if use_pui:
+        pui = PUIComponent(pui_sub_queue, app_pub_queue)
 
+    # === Initialize Calculation Engine ===
     calculation_sub_queue = asyncio.Queue()
     calculation = CalculationComponent(
         pub_queue=app_pub_queue,
@@ -182,34 +215,24 @@ if __name__ == "__main__":
         Ntot=1200,
     )
 
-    # === Initialize the app ===
-    components = [
-        ws,
-        calculation,
-        motor,
-        adc,
-        # pui,
-    ]  # Add all components to this array
+    # === Register components ===
+    components = [ws, calculation, motor]
+    if adc:
+        components.append(adc)
+    if pui:
+        components.append(pui)
+
     app = App(*components, pub_queue=app_pub_queue)
 
-    # === Add queue subscriptions ===
-
+    # === Add subscriptions ===
     app.registerSub(
-        ["voltage/data", "calculation/command", "adc/status"],
-        calculation_sub_queue,
+        ["voltage/data", "calculation/command", "adc/status"], calculation_sub_queue
     )
-
-    # Uncomment this if using motor component
     app.registerSub(["motor/command"], motor_sub_queue)
-
-    # Uncomment this if using lcd
-    # app.registerSub(["fft/data"], lcd_sub_queue)
-
-    # Only uncomment this if using PiPlate or Virtual ADC
-    # app.registerSub(["adc/command"], adc_sub_queue)
-
-    # Uncomment this if using physical user interface (PUI)
-    # app.registerSub(["signal/data"], pui_sub_queue)
+    if adc:
+        app.registerSub(["adc/command"], adc_sub_queue)
+    if pui:
+        app.registerSub(["signal/data"], pui_sub_queue)
 
     logger.info("starting app")
     asyncio.run(app.run())

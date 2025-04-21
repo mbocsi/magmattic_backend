@@ -19,47 +19,51 @@ When the Raspberry Pi boots:
 
 ---
 
-# Legacy Instructions (for development / local testing)
+# Development & Local Testing
 
-## On Local Machine (using virtual components)
-
-### Prerequisites
+## Requirements
 - Python 3.10 or higher
 - Recommended: virtual environment (venv, conda, etc.)
 - Install dependencies:
+
 ```bash
 pip install -r requirements.txt
 ```
 
-### Configure Virtual Components
+## Running the App
+Use the following command to run the app:
 
-To use virtual components for local testing, edit `main.py`:
-- Comment out real hardware component instances (`XXXComponent`)
-- Uncomment the corresponding `VirtualXXXComponent`
-
-#### Example: Use Virtual ADC
-```python
-# === Initialize ADC controller (PiPlate or Virtual ADC Only! Comment out if using ESP32) ===
-adc_sub_queue = asyncio.Queue()
-# adc = ADCComponent(pub_queue=app_pub_queue, sub_queue=adc_sub_queue)
-adc = VirtualADCComponent(pub_queue=app_pub_queue, sub_queue=adc_sub_queue)
-```
-
-Add the ADC to the app:
-```python
-components = [ws, calculation, adc]
-app = App(*components, pub_queue=app_pub_queue)
-```
-
-Register subscriptions:
-```python
-app.registerSub(["adc/command"], adc_sub_queue)
-```
-
-### Run Locally
-After setup:
 ```bash
+python main.py [options]
+```
+
+## Command Line Options
+You can configure which components to run via the following arguments:
+
+- `--dev` : Enables development mode
+  - Defaults to `VirtualMotorComponent`, `VirtualADCComponent`, and disables the physical UI (PUI)
+
+- `--adc-mode [none|virtual|piplate]` : Overrides the ADC configuration
+- `--motor-mode [virtual|physical]` : Overrides the motor configuration
+- `--pui-mode [enable|disable]` : Enables/disables the physical user interface
+
+### Default Behavior
+| Mode        | Motor         | ADC             | PUI           |
+|-------------|---------------|------------------|-----------------|
+| None        | Physical      | None (wireless) | Enabled         |
+| `--dev`     | Virtual       | Virtual         | Disabled        |
+| With Flags  | As specified  | As specified     | As specified    |
+
+Examples:
+```bash
+# Run in production mode with all physical components
 python main.py
+
+# Run in dev mode with all virtual components
+python main.py --dev
+
+# Run with physical motor, virtual ADC, and disable the UI
+python main.py --motor-mode physical --adc-mode virtual --pui-mode disable
 ```
 
 ---
