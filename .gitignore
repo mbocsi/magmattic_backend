@@ -3,3 +3,4 @@ __pycache__
 env
 .mypy_cache
 virtual*.txt
+.DS_Store
