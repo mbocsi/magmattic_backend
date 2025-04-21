@@ -1,10 +1,11 @@
-from app_interface import AppComponent
 from collections import deque
 import asyncio
 import logging
 import numpy as np
 import math
 from scipy.signal import find_peaks
+
+from app_interface import AppComponent
 from .windows import windows
 from type_defs import Window, CalculationStatus
 from motor import BaseMotorComponent

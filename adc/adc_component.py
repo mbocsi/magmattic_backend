@@ -82,6 +82,6 @@ class ADCComponent(BaseADCComponent):
         except asyncio.CancelledError:
             logger.debug("stream_adc() was cancelled")
         except Exception as e:
-            logger.warning("stream_adc() threw an exception:", e)
+            logger.warning(f"stream_adc() threw an exception: {e}")
         finally:
             self.ADC.stopSTREAM(self.addr)

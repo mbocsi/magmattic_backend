@@ -1,6 +1,7 @@
-from app_interface import AppComponent
 import asyncio
 import logging
+
+from app_interface import AppComponent
 from abc import abstractmethod
 from type_defs import MotorStatus
 

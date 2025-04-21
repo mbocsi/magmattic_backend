@@ -1,8 +1,8 @@
-from . import BaseADCComponent
 import asyncio
 import numpy as np
 import logging
-import time
+
+from . import BaseADCComponent
 from motor import BaseMotorComponent
 
 logger = logging.getLogger(__name__)
@@ -92,6 +92,6 @@ class VirtualADCComponent(BaseADCComponent):
         except asyncio.CancelledError:
             logger.debug("stream_adc() cancelled")
         except Exception as e:
-            logger.warning("stream_adc() raised an exception:", e)
+            logger.warning(f"stream_adc() raised an exception: {e}")
         finally:
             ...  # Do some clean up

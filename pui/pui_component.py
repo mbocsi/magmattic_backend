@@ -1,44 +1,18 @@
 import asyncio
+import numpy as np
 import logging
 import time
 from collections import deque
-import RPi.GPIO as GPIO
+
 from RPLCD.i2c import CharLCD
-from .lcd_interface import LCDInterface
+from app_interface import AppComponent
 import piplates.ADCplate as ADC
-import numpy as np
+from .pui_config import *
 
-logger = logging.getLogger(__name__ + ".LCDController")
-
-
-# Define state constants
-class State:
-    B_FIELD = 0
-    FFT = 1
-    ADJUSTING = 2
-    OFF = 3
+logger = logging.getLogger(__name__)
 
 
-# GPIO Button Pin Configuration - using BCM mode
-BUTTON_MODE = 17  # B1: Change mode button
-BUTTON_POWER = 22  # B2: Power on/off
-
-# Potentiometer Pins (ADC channels)
-POT_DAT = 0  # POT1: Data acquisition time potentiometer (ADC channel 0)
-
-# Display Configuration
-LCD_WIDTH = 16
-LCD_HEIGHT = 2
-I2C_ADDR = 0x27
-I2C_BUS = 1
-
-# Data acquisition time constants
-MIN_DAT = 0.1  # Minimum data acquisition time (seconds)
-MAX_DAT = 100.0  # Maximum data acquisition time (seconds)
-DEFAULT_DAT = 1.0  # Default data acquisition time (seconds)
-
-
-class LCDController(LCDInterface):
+class PUIComponent(AppComponent):
     """
     LCD controller that displays B-field and FFT data, with potentiometer control for
     data acquisition time.
@@ -46,6 +20,10 @@ class LCDController(LCDInterface):
 
     def __init__(self, q_data: asyncio.Queue, q_control: asyncio.Queue):
         """Initialize the LCD controller with data and control queues"""
+        import RPi.GPIO as GPIO
+
+        self.GPIO = GPIO
+
         self.q_data = q_data
         self.q_control = q_control
 
@@ -148,8 +126,8 @@ class LCDController(LCDInterface):
             # GPIO mode is already set globally at the top of the file
 
             # Use polling instead of edge detection for more reliability
-            GPIO.setup(BUTTON_MODE, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-            GPIO.setup(BUTTON_POWER, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+            self.GPIO.setup(BUTTON_MODE, self.GPIO.IN, pull_up_down=self.GPIO.PUD_UP)
+            self.GPIO.setup(BUTTON_POWER, self.GPIO.IN, pull_up_down=self.GPIO.PUD_UP)
 
             logger.info("GPIO setup complete")
 
@@ -161,23 +139,23 @@ class LCDController(LCDInterface):
         """Poll buttons for state changes with debouncing"""
         logger.info("Button polling task started")
 
-        prev_mode_state = GPIO.input(BUTTON_MODE)
-        prev_power_state = GPIO.input(BUTTON_POWER)
+        prev_mode_state = self.GPIO.input(BUTTON_MODE)
+        prev_power_state = self.GPIO.input(BUTTON_POWER)
 
         try:
             while True:
                 # Read current button states
-                mode_state = GPIO.input(BUTTON_MODE)
-                power_state = GPIO.input(BUTTON_POWER)
+                mode_state = self.GPIO.input(BUTTON_MODE)
+                power_state = self.GPIO.input(BUTTON_POWER)
 
                 # Check for mode button press (HIGH to LOW with pull-up)
-                if prev_mode_state == GPIO.HIGH and mode_state == GPIO.LOW:
+                if prev_mode_state == self.GPIO.HIGH and mode_state == self.GPIO.LOW:
                     logger.info("Mode button pressed")
                     await self.handle_button_press(BUTTON_MODE)
                     await asyncio.sleep(self.button_debounce)  # Debounce
 
                 # Check for power button press
-                if prev_power_state == GPIO.HIGH and power_state == GPIO.LOW:
+                if prev_power_state == self.GPIO.HIGH and power_state == self.GPIO.LOW:
                     logger.info("Power button pressed")
                     await self.handle_button_press(BUTTON_POWER)
                     await asyncio.sleep(self.button_debounce)  # Debounce
@@ -485,7 +463,7 @@ class LCDController(LCDInterface):
 
         # Clean up GPIO
         try:
-            GPIO.cleanup()
+            self.GPIO.cleanup()
         except Exception as e:
             logger.error(f"Error during GPIO cleanup: {e}")
 

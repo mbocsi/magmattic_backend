@@ -1,8 +1,9 @@
-from . import BaseMotorComponent
-from .motor_config import *
 import logging
 import asyncio
 import numpy as np
+
+from . import BaseMotorComponent
+from .motor_config import *
 
 logger = logging.getLogger(__name__)
 

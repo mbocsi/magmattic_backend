@@ -69,10 +69,4 @@ class WebSocketComponent(AppComponent):
     async def run(self) -> None:
         logger.info("starting WS server")
         async with serve(self.handle, self.host, self.port) as server:
-            # Send data to each client subscriber
-            # while True:
-            #     data = await self.sub_queue.get()
-            #     for q_data in self.conn_data.values():
-            #         await q_data.put(data)
-
             await server.serve_forever()
