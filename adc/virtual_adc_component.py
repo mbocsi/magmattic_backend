@@ -107,7 +107,7 @@ class VirtualADCComponent(BaseADCComponent):
                     await asyncio.sleep(1 / self.sample_rate)  # Wait between samples
 
                 # Add noise and publish voltage buffer
-                voltages = VirtualADCComponent.add_noise(voltages, noise_level=0.2)
+                voltages = VirtualADCComponent.add_noise(voltages, noise_level=0.05)
                 self.send_voltage(voltages)
                 await asyncio.sleep(0)  # Yield control to event loop
 

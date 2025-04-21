@@ -3,6 +3,7 @@ import asyncio
 import logging
 import numpy as np
 import math
+import threading
 from scipy.signal import find_peaks
 
 from app_interface import AppComponent
@@ -52,6 +53,8 @@ class CalculationComponent(AppComponent):
         self.motor_theta_buf: deque[float] = deque(maxlen=Nsig)
         self.last_motor_theta = None
         self.min_snr = 5
+
+        self._data_lock = threading.Lock()
 
     def calc_fft(self, data, T) -> tuple[np.ndarray, np.ndarray]:
         logger.debug(f"sending fft to queue: {data} {T}")
@@ -144,40 +147,38 @@ class CalculationComponent(AppComponent):
 
         # Wrap back to [0, 2π]
         motor_theta_interp = np.mod(motor_theta_interp, 2 * np.pi).tolist()
-        # Wrap between -pi and pi
-        # motor_theta_interp = (motor_theta_interp + np.pi) % (2 * np.pi) - np.pi
 
-        # Extend buffers
-        self.voltage_data.extend(buffer)
-        self.motor_theta_buf.extend(motor_theta_interp)
+        # Process data buffers atomically to prevent race conditions
+        with self._data_lock:
+            self.voltage_data.extend(buffer)
+            self.motor_theta_buf.extend(motor_theta_interp)
+            self.last_motor_theta = theta_now
 
-        # Update last angle for next buffer
-        self.last_motor_theta = theta_now
+            if len(self.voltage_data) < self.Nsig:
+                return
 
-        if len(self.voltage_data) < self.Nsig:
+            voltage_array = np.array(self.voltage_data)
+            motor_theta_array = np.array(self.motor_theta_buf)
+
+        if voltage_array.size < self.Nsig:
+            logger.warning(
+                "Voltage data unexpectedly truncated before FFT. Skipping frame."
+            )
             return
 
-        init_motor_theta = self.motor_theta_buf[0]
-
-        # logger.info(init_motor_theta)
+        init_motor_theta = motor_theta_array[0]
 
         # Calculate the OBSERVED average angular velocity
-        theta = np.unwrap(np.array(self.motor_theta_buf))
+        theta = np.unwrap(np.array(motor_theta_array))
         T = self.Nsig / self.sample_rate
         obs_motor_omega = (theta[-1] - theta[0]) / T
         obs_motor_freq = obs_motor_omega / (2 * math.pi)
 
-        # logger.info(obs_motor_freq)
-
         # Calculate FFT
-        magnitude, phase = self.calc_fft(self.voltage_data, T)
+        magnitude, phase = self.calc_fft(voltage_array, T)
 
         # Adjust phase angle based on initial motor position at
-        # logger.info(phase[:10])
-        # Wrap between -pi and pi
-        # phase[:, 1] = (phase[:, 1] + init_motor_theta + np.pi) % (2 * np.pi) - np.pi
         phase[:, 1] = np.mod(phase[:, 1] + init_motor_theta, 2 * np.pi)
-        # logger.info(phase[:10])
 
         # Find signals
         peaks = self.peaks(magnitude, phase, min_snr=self.min_snr)
@@ -188,9 +189,6 @@ class CalculationComponent(AppComponent):
             [self.calc_vampl(magnitude, freq) for freq in peaks[:, 0].tolist()]
         )
         peaks = np.hstack((peaks, voltage_amplitudes))
-
-        # Adjust phase angle based on initial motor position at
-        # peaks[:, 2] = np.mod(peaks[:, 2] + init_motor_theta, 2 * np.pi)
 
         # Find bfield of signals
         bfields = np.zeros((peaks.shape[0], 2))
@@ -255,7 +253,9 @@ class CalculationComponent(AppComponent):
         )
 
         if not self.rolling_fft:
-            self.voltage_data.clear()
+            with self._data_lock:
+                self.voltage_data.clear()
+                self.motor_theta_buf.clear()
 
     async def recv_control(self) -> None:
         loop = asyncio.get_running_loop()
