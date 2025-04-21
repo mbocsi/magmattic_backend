@@ -7,6 +7,8 @@ from motor import BaseMotorComponent
 
 logger = logging.getLogger(__name__)
 
+# Frequency-amplitude pairs for synthetic signal generation (Frequency is multiple of motor frequency)
+# Ex. if motor frequency = 5Hz and element in this list is [2, 1] -> Actual frequency = 10hz and amplitude = 1
 frequencies = np.array([[0, 0.1], [1, 1], [4, 0.05], [12, 0.1]])
 
 
@@ -21,24 +23,33 @@ class VirtualADCComponent(BaseADCComponent):
         sample_rate: int = 1200,
         Nbuf: int = 32,
     ):
+        """
+        Simulated ADC component that generates synthetic voltage data based on motor angle.
+
+        Args:
+            pub_queue: Queue for publishing voltage data.
+            sub_queue: Queue for receiving control commands.
+            motor_component: Reference to the motor for retrieving current angle.
+            addr: Simulated address (unused but required for interface consistency).
+            pin: Simulated input pin.
+            sample_rate: Sampling frequency in Hz.
+            Nbuf: Number of samples per buffer.
+        """
         super().__init__(pub_queue, sub_queue, addr, pin, sample_rate, Nbuf)
         self.motor_component = motor_component
 
     @classmethod
     def add_noise(cls, signal, noise_type="gaussian", noise_level=0.1) -> list[float]:
-        """Adds noise to a signal.
+        """
+        Adds synthetic noise to a clean signal.
 
         Args:
-            signal []: The input signal.
-            noise_type (str, optional): The type of noise to add.
-                Options are 'gaussian', 'uniform', and 'salt_pepper'.
-                Defaults to 'gaussian'.
-            noise_level (float, optional): The noise level,
-                expressed as a fraction of the signal's standard deviation.
-                Defaults to 0.1.
+            signal (list[float]): Input signal.
+            noise_type (str): Type of noise ('gaussian', 'uniform', 'salt_pepper').
+            noise_level (float): Noise intensity as a fraction of signal std deviation.
 
         Returns:
-            np.ndarray: The noisy signal.
+            list[float]: Noisy signal.
         """
         signal = np.array(signal)
         signal_std = np.std(signal)
@@ -66,9 +77,14 @@ class VirtualADCComponent(BaseADCComponent):
     @classmethod
     def sin_at_angle(cls, theta, frequencies):
         """
-        Calculate voltage at given angle `theta` based on multiple sine sources.
-        `theta` is a scalar (motor angle in radians).
-        `frequencies`: shape (num_components, 2), with [ [freq1, amp1], [freq2, amp2], ... ]
+        Computes the total voltage from multiple sinusoidal sources at a given angle.
+
+        Args:
+            theta (float): Motor angle in radians.
+            frequencies (np.ndarray): Array of shape (N, 2) with frequency and amplitude.
+
+        Returns:
+            float: Instantaneous voltage value.
         """
         phase = (
             2 * np.pi * frequencies[:, 0] * theta / (2 * np.pi)
@@ -77,21 +93,27 @@ class VirtualADCComponent(BaseADCComponent):
         return signal
 
     async def stream_adc(self) -> None:
+        """
+        Simulates continuous ADC sampling based on motor position and synthetic signal model.
+        Sends noisy voltage samples in chunks of `Nbuf` to the backend.
+        """
         try:
             while True:
                 voltages = []
                 for _ in range(self.Nbuf):
-                    theta = self.motor_component.theta
+                    theta = self.motor_component.theta  # Get current motor angle
                     v = VirtualADCComponent.sin_at_angle(theta, frequencies)
                     voltages.append(v)
-                    await asyncio.sleep(1 / self.sample_rate)
+                    await asyncio.sleep(1 / self.sample_rate)  # Wait between samples
 
+                # Add noise and publish voltage buffer
                 voltages = VirtualADCComponent.add_noise(voltages, noise_level=0.2)
                 self.send_voltage(voltages)
-                await asyncio.sleep(0)
+                await asyncio.sleep(0)  # Yield control to event loop
+
         except asyncio.CancelledError:
             logger.debug("stream_adc() cancelled")
         except Exception as e:
             logger.warning(f"stream_adc() raised an exception: {e}")
         finally:
-            ...  # Do some clean up
+            ...  # Optional cleanup
