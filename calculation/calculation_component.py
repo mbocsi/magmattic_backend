@@ -1,12 +1,15 @@
-from app_interface import AppComponent
 from collections import deque
 import asyncio
 import logging
 import numpy as np
 import math
+import threading
 from scipy.signal import find_peaks
+
+from app_interface import AppComponent
 from .windows import windows
 from type_defs import Window, CalculationStatus
+from motor import BaseMotorComponent
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +32,7 @@ class CalculationComponent(AppComponent):
         self,
         pub_queue: asyncio.Queue,
         sub_queue: asyncio.Queue,
+        motor_component: BaseMotorComponent,
         Nsig: int = 1024,
         Ntot: int = 1024,
         rolling_fft: bool = False,
@@ -37,6 +41,7 @@ class CalculationComponent(AppComponent):
     ):
         self.pub_queue = pub_queue
         self.sub_queue = sub_queue
+        self.motor_component = motor_component
         self.Nsig = Nsig
         self.Ntot = Ntot
         self.rolling_fft = rolling_fft
@@ -45,9 +50,11 @@ class CalculationComponent(AppComponent):
         self.voltage_data: deque[float] = deque(maxlen=Nsig)
 
         self.coil_props = parse_coil_props(coil_props)
-        self.motor_theta = 0
-        self.theta_init = 0
+        self.motor_theta_buf: deque[float] = deque(maxlen=Nsig)
+        self.last_motor_theta = None
         self.min_snr = 5
+
+        self._data_lock = threading.Lock()
 
     def calc_fft(self, data, T) -> tuple[np.ndarray, np.ndarray]:
         logger.debug(f"sending fft to queue: {data} {T}")
@@ -62,6 +69,9 @@ class CalculationComponent(AppComponent):
         # Obtain magnitude and phase
         magnitude = np.abs(fft)
         phase = np.angle(fft)
+
+        # shift domain to [0, 2pi)
+        phase = phase + np.pi
 
         magnitude[1:-1] = 2 * magnitude[1:-1]
 
@@ -118,14 +128,57 @@ class CalculationComponent(AppComponent):
         return vector * mag
 
     def process_voltage_data(self, data, loop):
-        self.voltage_data.extend(data["payload"])
-        if len(self.voltage_data) < self.Nsig:
+        buffer = data["payload"]
+        theta_now = self.motor_component.theta
+        theta_prev = (
+            self.last_motor_theta if self.last_motor_theta is not None else theta_now
+        )
+
+        # Unwrap the angles to avoid 2π → 0 jumps
+        unwrapped = np.unwrap(
+            [theta_prev, theta_now]
+        )  # handles crossing the 2π boundary
+        theta_prev_unwrapped, theta_now_unwrapped = unwrapped[0], unwrapped[1]
+
+        # Interpolate smoothly between the two
+        motor_theta_interp = np.linspace(
+            theta_prev_unwrapped, theta_now_unwrapped, num=len(buffer)
+        )
+
+        # Wrap back to [0, 2π]
+        motor_theta_interp = np.mod(motor_theta_interp, 2 * np.pi).tolist()
+
+        # Process data buffers atomically to prevent race conditions
+        with self._data_lock:
+            self.voltage_data.extend(buffer)
+            self.motor_theta_buf.extend(motor_theta_interp)
+            self.last_motor_theta = theta_now
+
+            if len(self.voltage_data) < self.Nsig:
+                return
+
+            voltage_array = np.array(self.voltage_data)
+            motor_theta_array = np.array(self.motor_theta_buf)
+
+        if voltage_array.size < self.Nsig:
+            logger.warning(
+                "Voltage data unexpectedly truncated before FFT. Skipping frame."
+            )
             return
 
+        init_motor_theta = motor_theta_array[0]
+
+        # Calculate the OBSERVED average angular velocity
+        theta = np.unwrap(np.array(motor_theta_array))
         T = self.Nsig / self.sample_rate
+        obs_motor_omega = (theta[-1] - theta[0]) / T
+        obs_motor_freq = obs_motor_omega / (2 * math.pi)
 
         # Calculate FFT
-        magnitude, phase = self.calc_fft(self.voltage_data, T)
+        magnitude, phase = self.calc_fft(voltage_array, T)
+
+        # Adjust phase angle based on initial motor position at
+        phase[:, 1] = np.mod(phase[:, 1] + init_motor_theta, 2 * np.pi)
 
         # Find signals
         peaks = self.peaks(magnitude, phase, min_snr=self.min_snr)
@@ -146,6 +199,9 @@ class CalculationComponent(AppComponent):
             for volt_ampl in peaks[:, [0, 2, 3]].tolist()
         ]
         peaks = np.hstack((peaks, bfields))
+
+        signal_idx = (np.abs(peaks[:, 0] - obs_motor_freq)).argmin()
+        signal = peaks[signal_idx, :]
 
         # Filter phase by detected signals
         phase[:, 1] = np.where(
@@ -182,10 +238,24 @@ class CalculationComponent(AppComponent):
                 ],
             },
         )
+        loop.call_soon_threadsafe(
+            self.pub_queue.put_nowait,
+            {
+                "topic": "signal/data",
+                "payload": {
+                    "freq": signal[0],
+                    "mag": signal[1],
+                    "phase": signal[2],
+                    "ampl": signal[3],
+                    "bfield": signal[4:].tolist(),
+                },
+            },
+        )
 
         if not self.rolling_fft:
-            self.voltage_data.clear()
-        self.theta_init = self.motor_theta
+            with self._data_lock:
+                self.voltage_data.clear()
+                self.motor_theta_buf.clear()
 
     async def recv_control(self) -> None:
         loop = asyncio.get_running_loop()
@@ -202,8 +272,6 @@ class CalculationComponent(AppComponent):
                         asyncio.create_task(asyncio.to_thread(self.control, data, loop))
                     case "adc/status":
                         self.sample_rate = data["payload"]["sample_rate"]
-                    case "motor/data":
-                        self.motor_theta = data["payload"]["theta"]
                     case _:
                         logger.warning(f"unknown topic received: {data['topic']}")
                 # endTime = time.perf_counter()
@@ -215,6 +283,12 @@ class CalculationComponent(AppComponent):
         original_values = {}
         try:
             for var, value in control["payload"].items():
+                if var == "acquisition_time":
+                    self.Nsig = int(self.sample_rate * value)
+                    self.Ntot = int(self.sample_rate * value)
+                    self.voltage_data = deque(maxlen=self.Ntot)
+                    self.motor_theta_buf = deque(maxlen=self.Ntot)
+                    continue
                 if hasattr(self, var):
                     original_values[var] = getattr(self, var)
                 else:
@@ -223,11 +297,12 @@ class CalculationComponent(AppComponent):
 
                 if var == "Nsig":
                     self.voltage_data = deque(maxlen=value)
+                    self.motor_theta_buf = deque(maxlen=value)
 
-                loop.call_soon_threadsafe(
-                    self.pub_queue.put_nowait,
-                    {"topic": "calculation/status", "payload": self.getStatus()},
-                )
+            loop.call_soon_threadsafe(
+                self.pub_queue.put_nowait,
+                {"topic": "calculation/status", "payload": self.getStatus()},
+            )
         except AttributeError:
             for var, value in original_values.items():
                 setattr(self, var, value)

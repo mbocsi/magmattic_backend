@@ -1,50 +1,84 @@
 # Magmattic Backend
 
-This is the app that runs on the raspberry pi. The app is broken into "AppComponents", each one in their own folder.
+This is the app that runs on the Raspberry Pi. The app is broken into modular "AppComponents", each in their own folder.
 
-# Instructions for running
-## On Raspberry Pi
-### 1. Navigate to ```/home/magmattic/Documents/magmattic_backend```
-### 2. Run ```source env/bin/activate``` in command line
-### 3. (Optional) Do a ```git pull``` for latest version and make sure you are in 'main' branch (```git checkout main```).
-### 4. Run ```python main.py``` in command line
-## On Local Machine (using virtual components)
-### Prerequisites
-- Use Python 3.10 or higher
-- I recommend using a virtual environment (venv, conda, etc.)
-- Install packages:
-  - ```pip install -r requirements.txt```
-### Configure virtual components
-For now, you need to uncomment the virtual components in ```main.py```.
-Comment out the lines that instantiate XXXComponent() objects and uncomment the corresponding virtual components VirtualXXXComponent().
-#### Example: Configure Virtual ADC if you don't have ESP32
-Instantiate a VirtualADCComponent:
-```python
-# === Initialize ADC controller (PiPlate or Virtual ADC Only! Comment out if using ESP32) ===
-adc_sub_queue = asyncio.Queue()
-# adc = ADCComponent(pub_queue=app_pub_queue, sub_queue=adc_sub_queue)
-adc = VirtualADCComponent(pub_queue=app_pub_queue, sub_queue=adc_sub_queue)
-```
-Add the adc to the app:
-```python
-# === Initialize the app ===
-components = [ws, calculation, adc]  # added 'adc' to this array 
-app = App(*components, pub_queue=app_pub_queue)
-```
-Register adc data subscriptions by uncommenting:
-```python
-# Only uncomment this if using PiPlate or Virtual ADC
-app.registerSub(["adc/command"], adc_sub_queue)
-```
-Done! Kinda annoying, but extremely modular/configurable. I will get around to automating configurations.
-### Run
-After navigating to project directory, installing packages, and configuring virtual components run in command line:
+---
+
+# ✅ Current Raspberry Pi Setup (Automatic)
+
+As of the latest setup, **you do not need to manually start the backend**.
+
+When the Raspberry Pi boots:
+- The backend app is **automatically updated** if connected to the internet (pulls the latest version from the `main` branch).
+- The app is executed as a **systemd service**.
+- A **Wi-Fi hotspot** is started with the following credentials:
+  - SSID: `Magpi`
+  - Password: `magmattic2025`
+- If connected to the Pi’s hotspot, the Pi is accessible at:  
+  `http://magpi.local`
+
+---
+
+# Development & Local Testing
+
+## Requirements
+- Python 3.10 or higher
+- Recommended: virtual environment (venv, conda, etc.)
+- Install dependencies:
+
 ```bash
-python main.py
+pip install -r requirements.txt
 ```
-# Get IP address
-Look for the IPv4 Address after executing one of the following. This will be needed when connecting the dev client.
-## Linux/MacOS/RaspOS (Raspberry Pi):
-Run in command line: ```ifconfig```
+
+## Running the App
+Use the following command to run the app:
+
+```bash
+python main.py [options]
+```
+
+## Command Line Options
+You can configure which components to run via the following arguments:
+
+- `--dev` : Enables development mode
+  - Defaults to `VirtualMotorComponent`, `VirtualADCComponent`, and disables the physical UI (PUI)
+
+- `--adc-mode [none|virtual|piplate]` : Overrides the ADC configuration
+- `--motor-mode [virtual|physical]` : Overrides the motor configuration
+- `--pui-mode [enable|disable]` : Enables/disables the physical user interface
+
+### Default Behavior
+| Mode        | Motor         | ADC             | PUI           |
+|-------------|---------------|------------------|-----------------|
+| None        | Physical      | None (wireless) | Enabled         |
+| `--dev`     | Virtual       | Virtual         | Disabled        |
+| With Flags  | As specified  | As specified     | As specified    |
+
+Examples:
+```bash
+# Run in production mode with all physical components
+python main.py
+
+# Run in dev mode with all virtual components
+python main.py --dev
+
+# Run with physical motor, virtual ADC, and disable the UI
+python main.py --motor-mode physical --adc-mode virtual --pui-mode disable
+```
+
+---
+
+# Networking / IP Info
+
+If you are not using `magpi.local`, you can still find the Pi's IP address.
+
+## Linux/MacOS/RaspOS:
+```bash
+ifconfig
+```
+
 ## Windows:
-Run in command line: ```ipconfig```
+```bash
+ipconfig
+```
+

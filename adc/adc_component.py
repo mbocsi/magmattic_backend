@@ -1,9 +1,11 @@
-from . import BaseADCComponent
 import asyncio
 import logging
 
+from . import BaseADCComponent
+
 logger = logging.getLogger(__name__)
 
+# Mapping of supported sample rates (Hz) to their corresponding hardware codes
 SAMPLE_CONV = {
     1.25: 0,
     2.5: 1,
@@ -37,6 +39,17 @@ class ADCComponent(BaseADCComponent):
         sample_rate: int = 1007,
         Nbuf: int = 32,
     ):
+        """
+        Initializes the ADCComponent.
+
+        Args:
+            pub_queue: Queue to publish messages to other components.
+            sub_queue: Queue to receive messages from other components.
+            addr: I2C address of the ADC device.
+            pin: Input pin name on the ADC.
+            sample_rate: Desired ADC sampling rate in Hz.
+            Nbuf: Number of samples per ADC buffer.
+        """
         super().__init__(
             pub_queue=pub_queue,
             sub_queue=sub_queue,
@@ -46,7 +59,7 @@ class ADCComponent(BaseADCComponent):
             Nbuf=Nbuf,
         )
 
-        import adc.adc_async as ADC
+        import adc.adc_async as ADC  # Hardware interface module for ADC operations
 
         self.ADC = ADC
 
@@ -56,32 +69,41 @@ class ADCComponent(BaseADCComponent):
         else:
             logger.info(f"connected ADC-> id={adc_id}")
 
-    async def stream_adc(self):
+    async def stream_adc(self) -> None:
         """
-        Runs the ADC sampling process
+        Continuously streams ADC data and sends it to the publication queue.
+        Automatically adjusts sample rate if an unsupported one is given.
+        Handles graceful shutdown and error logging.
         """
 
         logger.debug("stream_adc() started")
 
         # TODO: Test this section
+        # Validate and correct unsupported sample rates
         if self.sample_rate not in SAMPLE_CONV:
             self.sample_rate = 1007
             self.pub_queue.put_nowait(
                 {"topic": "adc/status", "payload": self.getStatus()}
             )
 
+        # Configure and start streaming from the ADC
         self.ADC.setMODE(self.addr, "ADV")
         self.ADC.configINPUT(self.addr, self.pin, SAMPLE_CONV[self.sample_rate], True)
         self.ADC.startSTREAM(self.addr, self.Nbuf)
         try:
             while True:
+                # Wait for and retrieve ADC buffer data
                 buffer = await self.ADC.getStreamSync(self.addr)
                 logger.debug(f"ADC buffer readings: {buffer}")
+
+                # Process and send voltage readings downstream
                 self.send_voltage(buffer)
-                await asyncio.sleep(0)  # Guarantee resource release to event runtime
+
+                # Yield to event loop to allow other coroutines to run
+                await asyncio.sleep(0)
         except asyncio.CancelledError:
             logger.debug("stream_adc() was cancelled")
         except Exception as e:
-            logger.warning("stream_adc() threw an exception:", e)
+            logger.warning(f"stream_adc() threw an exception: {e}")
         finally:
             self.ADC.stopSTREAM(self.addr)
