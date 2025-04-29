@@ -169,7 +169,7 @@ async def main():
     
     try:
         # Create LCD controller
-        lcd = LCDController(q_data, q_control)
+        lcd = PUIComponent(q_data, q_control)
         
         # Replace the potentiometer reading with our mock function
         # This uses monkey patching to swap the method
