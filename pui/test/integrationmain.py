@@ -4,7 +4,7 @@ from collections import defaultdict
 
 # Import your components
 from adc import VirtualADCComponent  # Use virtual for testing
-from nikhil_frontend import LCDController
+from pui import PUIComponent
 from app_interface import AppComponent
 
 logger = logging.getLogger(__name__)
