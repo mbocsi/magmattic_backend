@@ -5,7 +5,7 @@ import math
 import sys
 import os
 import time
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from pui import PUIComponent
 import RPi.GPIO as GPIO
 
