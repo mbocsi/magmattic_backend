@@ -37,32 +37,24 @@ async def generate_test_data(q_data: asyncio.Queue):
             angle = (angle + 0.1) % (2 * math.pi)
             voltage = math.sin(angle) + random.uniform(-0.1, 0.1)
             
-            # Send voltage data
-            await q_data.put({
-                "topic": "voltage/data", 
-                "payload": [voltage]
-            })
-
-            # Generate FFT data
-            # Primary peak at 50Hz
-            primary_peak = [50.0, abs(voltage) * 0.8]
-            # Secondary peak at 100Hz
-            secondary_peak = [100.0, abs(voltage) * 0.5]
-            # Some noise peaks
-            noise_peaks = [
-                [25.0, random.uniform(0.05, 0.1)],
-                [75.0, random.uniform(0.05, 0.1)]
-            ]
+            # Calculate simulated B-field
+            b_field_x = math.cos(angle) * random.uniform(0.5, 1.5) * 0.000025  # Random B-field strength
+            b_field_y = math.sin(angle) * random.uniform(0.5, 1.5) * 0.000025
+            b_field = [b_field_x, b_field_y]  # Vector form
             
-            # Combine all peaks
-            fft_data = [primary_peak, secondary_peak] + noise_peaks
-            
-            # Send FFT data - must match expected topic in controller
+            # Send signal data that matches the expected format in PUIComponent
             await q_data.put({
-                "topic": "fft_mags/data", 
-                "payload": fft_data
+                "topic": "signal/data", 
+                "payload": {
+                    "freq": 50.0,  # Simulated peak frequency in Hz
+                    "mag": abs(voltage),  # Signal magnitude
+                    "phase": angle,  # Signal phase in radians
+                    "ampl": abs(voltage),  # Signal amplitude
+                    "bfield": b_field  # B-field vector
+                }
             })
             
+            # Generate FFT data (optional, could add later if needed)
             # Sleep rate controls data generation speed
             await asyncio.sleep(0.2)  # 5Hz update rate
 
@@ -171,9 +163,19 @@ async def main():
         # Create LCD controller
         lcd = PUIComponent(q_data, q_control)
         
-        # Replace the potentiometer reading with our mock function
-        # This uses monkey patching to swap the method
-        lcd.read_potentiometer = mock_read_potentiometer
+        # Monkey patch the ADC read method
+        # This is required because the PUIComponent uses ADC.getADC in poll_potentiometer
+        from piplates import ADCplate as ADC
+        original_getADC = ADC.getADC
+        
+        def mock_getADC(addr, chan):
+            global pot_value
+            if addr == 0 and chan == 0:  # This is the POT_DAT channel
+                return pot_value * 5.0 / 1023.0
+            return original_getADC(addr, chan)
+        
+        # Apply the monkey patch
+        ADC.getADC = mock_getADC
         
         # Start data generation
         data_task = asyncio.create_task(generate_test_data(q_data))
@@ -211,6 +213,10 @@ async def main():
         logger.error(f"Error during test: {e}")
     finally:
         logger.info("Cleaning up...")
+        
+        # Restore original ADC function if we patched it
+        if 'original_getADC' in locals():
+            ADC.getADC = original_getADC
         
         # Cancel all tasks
         for task in tasks:
