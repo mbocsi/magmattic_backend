@@ -7,6 +7,7 @@ import os
 import time
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from pui import PUIComponent
+from pui.pui_config import POT_DAT
 import RPi.GPIO as GPIO
 
 # Configure logging - increase level to DEBUG for more detailed logs
@@ -144,8 +145,8 @@ async def handle_user_input():
                 logger.info(f"DEBUG: Current voltage: {pot_value * 5.0 / 1023.0:.2f}V")
                 # Test the monkey patched function directly
                 from piplates import ADCplate as ADC
-                value = ADC.getADC(0, 0)
-                logger.info(f"DEBUG: Direct ADC.getADC(0,0) call returns: {value:.2f}V")
+                value = ADC.getADC(0, POT_DAT)
+                logger.info(f"DEBUG: Direct ADC.getADC(0,{POT_DAT}) call returns: {value:.2f}V")
                 # Force a state change to ADJUSTING to test potentiometer handling
                 logger.info("DEBUG: Forcing state change to ADJUSTING")
                 lcd.current_state = 2  # State.ADJUSTING
@@ -166,8 +167,8 @@ async def test_pot_directly():
             global pot_value
             try:
                 # Read directly using our mocked function
-                value = ADC.getADC(0, 0)
-                logger.debug(f"Direct ADC test: pot_value={pot_value}, ADC.getADC(0,0)={value:.2f}V")
+                value = ADC.getADC(0, POT_DAT)
+                logger.debug(f"Direct ADC test: pot_value={pot_value}, ADC.getADC(0,{POT_DAT})={value:.2f}V")
             except Exception as e:
                 logger.error(f"Error in direct ADC test: {e}")
             
@@ -194,7 +195,7 @@ async def main():
         
         def mock_getADC(addr, chan):
             global pot_value
-            if addr == 0 and chan == 0:  # This is the POT_DAT channel
+            if addr == 0 and chan == POT_DAT:  # Using POT_DAT from pui_config
                 voltage = pot_value * 5.0 / 1023.0
                 logger.debug(f"Mock ADC.getADC called: addr={addr}, chan={chan}, pot_value={pot_value}, voltage={voltage:.2f}V")
                 return voltage
@@ -202,7 +203,7 @@ async def main():
         
         # Apply the monkey patch
         ADC.getADC = mock_getADC
-        logger.info("Applied mock_getADC patch to ADC module")
+        logger.info(f"Applied mock_getADC patch to ADC module using POT_DAT={POT_DAT}")
 
         # Create LCD controller after patching
         lcd = PUIComponent(q_data, q_control)
